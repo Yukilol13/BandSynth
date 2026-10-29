@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BandSynth · 采样合成器工作站</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- 启动遮罩 -->
+<div id="audioGate" class="audio-gate">
+  <div class="gate-card">
+    <div class="gate-logo">BandSynth</div>
+    <div class="gate-sub">采样合成器 · 编曲工作站</div>
+    <div class="gate-hint">点击任意位置启动音频引擎</div>
+    <div class="gate-formats">
+      支持手机录音（m4a / mp3 / wav）· 视频（mp4 / mov / webm）· 微信传输视频
+    </div>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">BS</span>
+    <span class="brand-name">BandSynth</span>
+  </div>
+
+  <!-- 走带 / 速度 / 拍号都归编曲页（顶栏不再重复） -->
+  <div class="transport">
+    <button id="metroBtn" class="tbtn" title="节拍器">节拍</button>
+  </div>
+
+  <div class="pos-display">
+    <div class="pos-bar" id="barBeat">1 . 1</div>
+    <div class="pos-time" id="transportPos">0:00.00</div>
+  </div>
+
+  <div class="meter-area">
+    <div class="meter">
+      <div class="meter-track">
+        <div class="meter-peak" id="meterPeak"></div>
+        <div class="meter-fill" id="meterFill"></div>
+      </div>
+    </div>
+    <div class="stats">
+      <span>复音 <b id="voiceCount">0</b></span>
+      <span id="midiBadge" class="midi-badge" title="MIDI 输入设备">MIDI —</span>
+    </div>
+  </div>
+</header>
+
+<div id="appRoot" class="app">
+
+  <!-- ============ 左侧：声部 + 参数 ============ -->
+  <aside class="col col-left">
+    <section class="block">
+      <div class="block-head">
+        <h2>声部</h2>
+        <span class="badge" id="partCount">0</span>
+        <button id="addPartBtn" class="btn small">+ 添加</button>
+      </div>
+      <div id="partList" class="part-list"></div>
+    </section>
+
+    <section class="block grow">
+      <div class="block-head">
+        <h2>声部参数</h2>
+      </div>
+      <div id="partEditor" class="part-editor"></div>
+    </section>
+  </aside>
+
+  <!-- ============ 中间：键盘 + 乐谱 ============ -->
+  <main class="col col-main">
+
+    <div class="stage-tabs">
+      <button class="stage-tab active" data-stage="perform">演奏</button>
+      <button class="stage-tab" data-stage="drums">鼓组</button>
+      <button class="stage-tab" data-stage="arrange">编曲</button>
+      <button class="stage-tab" data-stage="import">导入成谱</button>
+      <button class="stage-tab" data-stage="library">采样库</button>
+      <button class="stage-tab" data-stage="render">渲染导出</button>
+    </div>
+
+    <!-- 演奏台 -->
+    <section class="stage stage-perform active" id="stagePerform">
+      <div class="kb-toolbar">
+        <div class="kb-group">
+          <button id="octDown" class="btn">八度 −</button>
+          <span class="oct-label" id="octaveLabel">C3–C7</span>
+          <button id="octUp" class="btn">八度 +</button>
+        </div>
+        <div class="kb-group">
+          <label class="mini-label">力度</label>
+          <input id="velSlider" type="range" class="vel-slider" min="10" max="100" value="85">
+        </div>
+        <div class="kb-group">
+          <label class="mini-label">当前音色</label>
+          <span class="current-tone" id="currentTone">—</span>
+        </div>
+        <div class="kb-group">
+          <label class="mini-label">键位</label>
+          <span class="mini-hint" title="一字排开：白键 qwertyuiop[]zxcvbnm,./ 从当前音域最低的 C 起连续升高，黑键 2356790=asfgjkl 夹在相邻白键之间">一字排开（C）</span>
+        </div>
+        <!-- 换手选项暂时隐藏：只保留固定右手模式 -->
+        <div class="kb-group hide" id="handSwitchWrap" style="display:none">
+          <label class="mini-label">左右手</label>
+          <div class="seg" id="handSeg">
+            <button class="seg-i active" data-hand="standard">标准</button>
+          </div>
+        </div>
+        <label class="chk" title="只响当前选中的音色（默认）。勾选后改为响最后一个声部，方便配着伴奏即兴">
+          <input type="checkbox" id="followMode"> 跟随模式
+        </label>
+        <div class="kb-tips">
+          电脑键盘按<b>一字排开</b>键位演奏 · <b>← →</b> 换音域 · 空格播放 · Esc 停止
+        </div>
+      </div>
+      <div id="keyboardHost" class="keyboard-host"></div>
+      <div class="kb-ref" id="kbRef">
+        <div class="kb-ref-item" data-mode="C">
+          <span class="kb-ref-tag">一字排开</span>
+          <span class="kb-ref-keys">
+            <b>白键 22</b> Q W E R T Y U I O P [ ] = C D E F G A B C D E F G ·
+            Z X C V B N M , . / = A B C D E F G A B C · 从<b>当前音域最低的 C</b> 起连续升高
+            （共三个八度）<br>
+            <b>黑键 15</b> 2 3 5 6 7 9 0 = A S F G J K L = C# D# F# G# A# ×3，
+            夹在相邻白键之间，位置与真钢琴一致
+          </span>
+        </div>
+        <div class="kb-ref-item drums">
+          <span class="kb-ref-tag">鼓组页</span>
+          <span class="kb-ref-keys">
+            <b>空格</b> 底鼓 · <b>S</b> 军鼓 · <b>D</b> 拍手 · <b>F</b> 边击 ·
+            <b>J</b> 闭镲 · <b>K</b> 开镲 · <b>Q W E</b> 嗵鼓 · <b>R</b> 叮镲 · <b>T</b> 碎镲 · <b>G</b> 沙锤
+          </span>
+        </div>
+        <div class="kb-ref-hint kb-ref-line" id="agZoneHint">键位随当前音域整体平移</div>
+        <div class="kb-ref-note">快捷键按页签互斥：演奏页只有键盘，鼓组页只有鼓，不会同时响</div>
+      </div>
+    </section>
+
+    <!-- 鼓组 -->
+    <section class="stage stage-drums" id="stageDrums">
+      <div class="drum-toolbar">
+        <div class="kb-group">
+          <label class="mini-label">鼓组力度</label>
+          <input id="drumVelSlider" type="range" class="vel-slider" min="10" max="100" value="85">
+        </div>
+        <div class="kb-group">
+          <label class="chk"><input type="checkbox" id="drumFollow"> 跟随伴奏（点击鼓位由曲谱触发）</label>
+        </div>
+        <div class="kb-group">
+          <button id="drumInitBtn" class="btn small">生成鼓组声部</button>
+          <span class="mini-hint" id="drumInitHint">未初始化</span>
+        </div>
+        <div class="kb-tips">
+          点击鼓面敲击 · 敲击位置越靠中心力度越大 · 键盘 <b>空格 底鼓 / S 军鼓 / J 闭镲 / K 开镲 / Q W E 嗵鼓 / R 叮镲 / T 碎音镲</b>
+        </div>
+      </div>
+      <div id="drumKitHost" class="drumkit-host"></div>
+    </section>
+
+    <!-- 编曲（DAW 式横向钢琴卷帘） -->
+    <section class="stage stage-arrange" id="stageArrange">
+      <div class="ag-toolbar">
+        <button id="agPlay" class="btn primary">▶ 试听</button>
+        <button id="agStop" class="btn">■ 停止</button>
+        <button id="agRecord" class="btn rec" title="按电脑键盘演奏，实时录入到当前轨">● 录制</button>
+
+        <div class="kb-group">
+          <button id="agUndo" class="btn small" title="撤销 (Ctrl+Z)" disabled>↶ 撤销</button>
+          <button id="agRedo" class="btn small" title="重做 (Ctrl+Shift+Z)" disabled>↷ 重做</button>
+        </div>
+        <div class="kb-group">
+          <button id="agLoop" class="btn small" title="循环目标小节 4 小节（Shift+拖标尺可改）">循环</button>
+          <button id="agZoomOut" class="btn small" title="缩小">−</button>
+          <button id="agFit" class="btn small" title="整曲适配窗口">适配</button>
+          <button id="agZoomIn" class="btn small" title="放大">+</button>
+        </div>
+
+        <div class="kb-group">
+          <label class="mini-label">调性</label>
+          <select id="agKey" class="sel"></select>
+          <select id="agScale" class="sel"></select>
+        </div>
+        <div class="kb-group">
+          <label class="mini-label">速度</label>
+          <input id="agBpm" type="number" class="num" min="20" max="400" step="1" value="120">
+          <span class="mini-label">BPM</span>
+        </div>
+        <div class="kb-group">
+          <label class="mini-label">拍号</label>
+          <select id="agSig" class="sel"></select>
+        </div>
+        <div class="kb-group">
+          <label class="mini-label">小节数</label>
+          <input id="agBars" type="number" class="num" min="1" max="512" step="1" value="16">
+          <button id="agBarsAdd" class="btn small">+4</button>
+          <button id="agBarsDel" class="btn small">−4</button>
+        </div>
+        <div class="kb-group">
+          <label class="mini-label">吸附</label>
+          <select id="agGrid" class="sel"></select>
+        </div>
+        <div class="kb-group">
+          <button id="agAddTrack" class="btn small" title="新建音轨：可选声部音轨或鼓组音轨">＋ 音轨</button>
+          <button id="agDelTrack" class="btn small" title="删除当前音轨（Ctrl+Z 可撤销）">− 音轨</button>
+        </div>
+        <span class="mini-hint" id="agStatus">—</span>
+      </div>
+
+      <div class="ag-subbar">
+        <div class="kb-group">
+          <label class="mini-label">小节</label>
+          <input id="agBarSel" type="text" class="text-input tiny" placeholder="如 1-4,7" >
+          <button id="agBarDel" class="btn small">删除所选小节</button>
+        </div>
+        <div class="kb-group">
+          <label class="mini-label">和弦库</label>
+          <select id="agChord" class="sel"></select>
+          <label class="mini-label">模板</label>
+          <select id="agPattern" class="sel"></select>
+          <button id="agFill" class="btn small">填充第 1 小节 →</button>
+          <label class="chk" title="录音前先打一小节预备拍"><input type="checkbox" id="agCountIn" checked> 预备拍</label>
+        </div>
+        <div class="kb-group">
+          <label class="mini-label">进行</label>
+          <select id="agProg" class="sel"></select>
+          <button id="agProgApply" class="btn small primary" title="从目标小节开始，按当前模板铺整段和弦进行">铺进行</button>
+        </div>
+        <div class="kb-group">
+          <button id="agSelectAll" class="btn small">全选本轨</button>
+          <button id="agDelSel" class="btn small">删除选中</button>
+        </div>
+      </div>
+
+      <div id="agEditBar" class="ag-editbar hide">
+        <span class="ag-edit-title" id="agEditTitle">编辑音轨</span>
+        <span class="ag-seg" id="agEditToolWrap" title="单轨编辑的鼠标模式：框选 = 拖动框选音块并整组移动；添加 = 左键点击直接加音">
+          <span class="ag-seg-label">编辑模式</span>
+          <button type="button" class="ag-seg-b on" id="agEditToolSelect" title="拖动空白处框选音块 · 选区整组横向/纵向移动（每次移动响第一个音）· Delete 删除选中">框选</button>
+          <button type="button" class="ag-seg-b" id="agEditToolAdd" title="左键点击空白处直接加音 · 拖动音块移动（落点响该音高）· Delete 删除选中">添加</button>
+        </span>
+        <label class="ag-switch on" id="agEditSoloWrap" title="单轨编辑时试听只放正在编辑的这一轨（其余轨静音；只影响试听，不改谱面、不影响导出）">
+          <input type="checkbox" id="agEditSolo" checked>
+          <span>试听仅本轨</span>
+        </label>
+        <span class="ag-zoomY" title="纵向缩放：音块变高 / 变矮（Ctrl+Shift+滚轮同效，锚在光标下的音）">
+          <button id="agEditZoomYOut" class="btn small" title="音块变矮：一屏看到更多音">行高 −</button>
+          <button id="agEditZoomYIn" class="btn small" title="音块变高：一屏只看几个音，好点好拖">行高 ＋</button>
+        </span>
+        <span class="mini-hint" id="agEditHint">点顶部标尺换目标小节 · 右键拖拽平移视图</span>
+        <div class="ag-edit-btns">
+          <button id="agEditCancel" class="btn small">取消</button>
+          <button id="agEditSave" class="btn small primary">保存</button>
+        </div>
+      </div>
+      <div id="agHost" class="ag-host"></div>
+
+      <!-- 编曲页演奏条：声部轨 → 黑白琴键；鼓组轨 → 一行鼓垫 -->
+      <div class="ag-inst" id="agInstrument">
+        <div class="ag-inst-head">
+          <span class="ag-inst-title" id="agInstTitle">演奏</span>
+          <span class="ag-inst-hint" id="agInstHint">点击琴键或按电脑键盘试听 · 录制时写入当前轨</span>
+          <span class="ag-inst-oct">
+            <button class="btn small" id="agInstOctDown" title="音域下移一个八度">−</button>
+            <button class="btn small" id="agInstOctUp" title="音域上移一个八度">＋</button>
+          </span>
+        </div>
+        <div class="ag-inst-body" id="agInstBody"></div>
+      </div>
+
+      <div class="ag-foot">
+        <div id="agStatus2" class="mini-hint">就绪</div>
+      </div>
+    </section>
+
+    <!-- 导入成谱：音频 → 分轨归类 → 自动生成鼓谱 → 写入编曲 -->
+    <section class="stage stage-import" id="stageImport">
+      <div class="im-toolbar">
+        <label class="btn primary im-pick" id="imPick" title="可多选：一个分轨文件对应一条音轨（鼓/贝斯/人声/钢琴/吉他/其他各自独立，人声不会被并进和声轨）；也可拖入 .mid/.csv（Basic Pitch 等外部转写工具产物，按本曲网格量化，模型按音高分的多通道会自动合并）；只给整首混音时只能出鼓谱">
+          ＋ 导入音频 / 分轨
+          <input type="file" id="imFile" multiple
+                 accept="audio/*,video/*,.mid,.midi,.csv,.mp3,.wav,.m4a,.aac,.flac,.ogg,.opus,.weba,.mp4,.m4v,.mov,.webm">
+        </label>
+        <button id="imAnalyze" class="btn">开始分析</button>
+        <span class="mini-hint" id="imStatus">—</span>
+        <div class="im-progress hide" id="imProgress"><i id="imProgressFill"></i></div>
+        <button id="imClear" class="btn small">清空</button>
+      </div>
+
+      <div class="im-files" id="imFiles"></div>
+
+      <div class="im-main">
+        <div class="im-canvas-wrap">
+          <canvas id="imCanvas" class="im-canvas"></canvas>
+          <div class="im-zoom">
+            <button class="btn small" id="imZoomOut" title="横轴缩小（Ctrl+滚轮 / Shift+滚轮平移）">−</button>
+            <button class="btn small" id="imFit" title="横轴适配整首">适配</button>
+            <button class="btn small" id="imZoomIn" title="横轴放大（Ctrl+滚轮）">＋</button>
+            <span class="im-zoom-label" id="imZoomLabel">100%</span>
+          </div>
+        </div>
+        <aside class="im-side">
+          <div class="im-params disabled" id="imParams">
+            <div class="im-field">
+              <label>BPM</label>
+              <input id="imBpm" type="number" class="num" min="20" max="400" step="0.1" value="120">
+              <button class="btn small" id="imMul2" title="半速/倍速歧义时校正">×2</button>
+              <button class="btn small" id="imDiv2" title="半速/倍速歧义时校正">÷2</button>
+            </div>
+            <div class="im-field">
+              <label>拍号</label>
+              <select id="imSig" class="sel">
+                <option value="4">4/4</option>
+                <option value="3">3/4</option>
+                <option value="2">2/4</option>
+                <option value="5">5/4</option>
+                <option value="6">6/4</option>
+                <option value="7">7/4</option>
+              </select>
+            </div>
+            <div class="im-field">
+              <label>网格</label>
+              <select id="imGrid" class="sel">
+                <option value="0.5">1/8</option>
+                <option value="0.3333333333">1/8 三连</option>
+                <option value="0.25" selected>1/16</option>
+                <option value="0.1666666667">1/16 三连</option>
+                <option value="0.125">1/32</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="im-conf" id="imConf"><span class="im-empty">还没有分析结果</span></div>
+          <div class="im-counts" id="imCounts"></div>
+
+          <div class="im-actions">
+            <button id="imPlayStem" class="btn small" disabled>试听原音轨</button>
+            <button id="imPlayChart" class="btn small primary" disabled>试听谱面</button>
+          </div>
+          <div class="im-actions">
+            <button id="imWrite" class="btn small primary" disabled>写入编曲 →</button>
+            <button id="imExport" class="btn small" disabled>导出 JSON</button>
+          </div>
+
+          <div class="im-log" id="imLog"></div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 采样库 -->
+    <section class="stage stage-library" id="stageLibrary">
+      <div id="libraryPanel" class="library-panel">
+        <div class="lib-empty">正在初始化存储…</div>
+      </div>
+      <input type="file" id="libFile" accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.opus,.webm,.mp4,.m4v,.mov" class="hidden-file">
+    </section>
+
+    <!-- 渲染 -->
+    <section class="stage stage-render" id="stageRender">
+      <div class="render-box">
+        <h3>离线渲染 · 生成伴奏音频</h3>
+        <p class="hint-text">使用 OfflineAudioContext 按谱面逐音符排程渲染，输出与实时播放一致。渲染速度通常快于曲速。</p>
+        <div class="render-actions">
+          <button id="renderBtn" class="btn primary">渲染并试听</button>
+          <button id="renderPlay" class="btn" disabled title="试听渲染结果">▶ 播放结果</button>
+          <button id="exportBtn" class="btn primary">导出 WAV</button>
+          <button id="renderStems" class="btn" title="每条音轨单独渲染一个 WAV（分轨）">分轨导出</button>
+          <label class="chk" title="只渲染编曲页设定的循环区间"><input type="checkbox" id="renderLoopOnly"> 只渲染循环区间</label>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="renderProgress"></div></div>
+        <div class="render-info" id="renderInfo"></div>
+
+        <div class="export-opts">
+          <h4>导出说明</h4>
+          <ul>
+            <li>格式：WAV PCM 16bit 立体声 44.1kHz</li>
+            <li>渲染源：有编曲内容时自动使用<b>编曲页</b>的当前内容（不必先试听）</li>
+            <li>尾音：谱面结束后额外保留 2 秒混响/延迟尾</li>
+            <li>分轨导出：每条音轨一个 WAV，带轨名前缀；鼓轨单独一轨</li>
+            <li>勾选「只渲染循环区间」可按编曲页设的循环段导出</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ 右侧：主控 FX ============ -->
+  <aside class="col col-right">
+    <section class="block">
+      <div class="block-head"><h2>主控</h2></div>
+      <div class="master-row" id="masterKnobs"></div>
+      <div class="master-btns">
+        <button id="masterMute" class="btn small">静音</button>
+        <button id="soloReset" class="btn small">取消独奏</button>
+      </div>
+      <label class="ctl">
+        <span class="mini-label">主音量（细调）</span>
+        <input id="masterVol" type="range" class="slider" min="0" max="1.2" step="0.01" value="0.85">
+      </label>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>工程</h2></div>
+      <p class="hint-text">工程包含全部声部参数、采样引用、曲谱与演奏设置。</p>
+      <input id="projectName" type="text" class="text-input" placeholder="工程名" value="我的工程">
+      <div class="proj-btns">
+        <button id="projSave" class="btn small">保存工程</button>
+        <button id="projLoad" class="btn small">加载工程</button>
+        <button id="projQuickSave" class="btn small" title="存到浏览器本地，下次一键取用">快速存档</button>
+        <button id="projQuickLoad" class="btn small" title="读取上次快速存档">读取存档</button>
+      </div>
+      <input type="file" id="projFile" accept=".json,.bsproj,application/json" class="hidden-file">
+
+      <!-- 曲谱 JSON：读写的就是编曲页的那份曲谱结构 -->
+      <div class="proj-sub">
+        <div class="sub-head">曲谱 JSON</div>
+        <p class="hint-text">与编曲页完全同构：音轨 / 角色 / 音色 / 音符一次带走。</p>
+        <div class="proj-btns">
+          <button id="importSong" class="btn small" title="读取曲谱 JSON 并载入编曲页">导入曲谱</button>
+          <button id="exportSong" class="btn small" title="把当前编曲导出为曲谱 JSON">导出曲谱</button>
+          <button id="songSample" class="btn small" title="复制一份符合当前编曲规范的格式示例到剪贴板">格式示例</button>
+        </div>
+        <input type="file" id="songJson" accept=".json,application/json" class="hidden-file">
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>效果器</h2></div>
+
+      <div class="fx-group">
+        <div class="fx-head">
+          <span>混响</span>
+          <select id="reverbType" class="select tiny">
+            <option value="room">房间</option>
+            <option value="hall" selected>大厅</option>
+            <option value="plate">金属板</option>
+            <option value="spring">弹簧</option>
+            <option value="church">教堂</option>
+          </select>
+        </div>
+        <label class="ctl">
+          <span class="mini-label">返回</span>
+          <input id="reverbReturn" type="range" class="slider" min="0" max="1.5" step="0.01" value="0.9">
+        </label>
+      </div>
+
+      <div class="fx-group">
+        <div class="fx-head"><span>延迟</span></div>
+        <label class="ctl">
+          <span class="mini-label">时间</span>
+          <input id="delayTime" type="range" class="slider" min="0.02" max="1.5" step="0.005" value="0.375">
+        </label>
+        <label class="ctl">
+          <span class="mini-label">反馈</span>
+          <input id="delayFb" type="range" class="slider" min="0" max="0.9" step="0.01" value="0.36">
+        </label>
+        <label class="ctl">
+          <span class="mini-label">返回</span>
+          <input id="delayReturn" type="range" class="slider" min="0" max="1.5" step="0.01" value="0.8">
+        </label>
+      </div>
+    </section>
+
+    <section class="block grow">
+      <div class="block-head"><h2>格式支持</h2></div>
+      <div class="format-list">
+        <div class="fmt ok"><b>手机录音</b><span>m4a / aac / mp3 / wav / flac</span></div>
+        <div class="fmt ok"><b>视频文件</b><span>mp4 / mov / m4v / webm（自动抽取音轨）</span></div>
+        <div class="fmt ok"><b>微信视频</b><span>mp4/h.264 直接可用</span></div>
+        <div class="fmt warn"><b>微信语音</b><span>AMR / SILK 私有格式需转码</span></div>
+        <div class="fmt warn"><b>其他容器</b><span>mkv / wma / aiff 建议转 WAV</span></div>
+      </div>
+      <div class="hint-text">
+        转码命令：<code>ffmpeg -i in.mp4 -vn -ar 44100 -ac 2 out.wav</code>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="src/core.js"></script>
+<script src="src/loader.js"></script>
+<script src="src/pitch.js"></script>
+<script src="src/tone.js"></script>
+<script src="src/engine.js"></script>
+<script src="src/factory.js"></script>
+<script src="src/score.js"></script>
+<script src="src/sequencer.js"></script>
+<script src="src/widgets.js"></script>
+<script src="src/keyboard-arbiter.js"></script>
+<script src="src/keymodes.js"></script>
+<script src="src/keyboard.js"></script>
+<script src="src/trim.js"></script>
+<script src="src/trim-ui.js"></script>
+<script src="src/denoise.js"></script>
+<script src="src/denoise-ui.js"></script>
+<script src="src/library.js"></script>
+<script src="src/export.js"></script>
+<script src="src/drum-rack.js"></script>
+<script src="src/drums.js"></script>
+<script src="src/piano-roll.js"></script>
+<script src="src/project.js"></script>
+<script src="src/modal.js"></script>
+<script src="src/dropdown.js"></script>
+<script src="src/arranger.js"></script>
+<script src="src/arranger-ui.js"></script>
+<script src="src/app.js"></script>
+<script src="src/app-arranger.js"></script>
+<script src="src/analysis.js"></script>
+<script src="src/midi.js"></script>
+<script src="src/import-song.js"></script>
+<script>
+// 顶部舞台切换
+document.addEventListener('click', function (e) {
+  var tab = e.target.closest('.stage-tab');
+  if (!tab) return;
+  var stage = tab.dataset.stage;
+  document.querySelectorAll('.stage-tab').forEach(function (t) { t.classList.remove('active'); });
+  tab.classList.add('active');
+  document.querySelectorAll('.stage').forEach(function (s) { s.classList.remove('active'); });
+  var map = {
+    perform: 'stagePerform',
+    drums: 'stageDrums',
+    arrange: 'stageArrange',
+    import: 'stageImport',
+    library: 'stageLibrary',
+    render: 'stageRender'
+  };
+  var el = document.getElementById(map[stage]);
+  if (el) el.classList.add('active');
+  BS.emit('stage:change', stage);
+  // 通知应用层（切到采样库时刷新列表）
+  if (window.BS) window.BS.emit('stage:change', stage);
+});
+</script>
+</body>
+</html>

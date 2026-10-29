@@ -1,0 +1,203 @@
+{
+  "version": 1,
+  "name": "示例 · 慢速抒情",
+  "bpm": 72,
+  "timeSignature": [
+    4,
+    4
+  ],
+  "swing": 0,
+  "loopBars": 4,
+  "tracks": [
+    {
+      "name": "Pad 和弦",
+      "part": 0,
+      "notes": [
+        {
+          "beat": 0,
+          "len": 3.8,
+          "pitch": "C3:E3:G3",
+          "vel": 0.45
+        },
+        {
+          "beat": 4,
+          "len": 3.8,
+          "pitch": "A2:C#3:E3",
+          "vel": 0.45
+        },
+        {
+          "beat": 8,
+          "len": 3.8,
+          "pitch": "F2:A2:C3",
+          "vel": 0.45
+        },
+        {
+          "beat": 12,
+          "len": 3.8,
+          "pitch": "G2:B2:D3",
+          "vel": 0.45
+        }
+      ],
+      "volume": 0.55,
+      "sendReverb": 0.5
+    },
+    {
+      "name": "贝斯",
+      "part": 1,
+      "notes": [
+        {
+          "beat": 0,
+          "len": 3.8,
+          "pitch": "C2",
+          "vel": 0.8
+        },
+        {
+          "beat": 2,
+          "len": 1.8,
+          "pitch": "C2",
+          "vel": 0.6
+        },
+        {
+          "beat": 4,
+          "len": 3.8,
+          "pitch": "A1",
+          "vel": 0.8
+        },
+        {
+          "beat": 6,
+          "len": 1.8,
+          "pitch": "A1",
+          "vel": 0.6
+        },
+        {
+          "beat": 8,
+          "len": 3.8,
+          "pitch": "F1",
+          "vel": 0.8
+        },
+        {
+          "beat": 10,
+          "len": 1.8,
+          "pitch": "F1",
+          "vel": 0.6
+        },
+        {
+          "beat": 12,
+          "len": 3.8,
+          "pitch": "G1",
+          "vel": 0.8
+        },
+        {
+          "beat": 14,
+          "len": 1.8,
+          "pitch": "G1",
+          "vel": 0.6
+        }
+      ],
+      "volume": 0.8
+    },
+    {
+      "name": "主旋律",
+      "part": 2,
+      "notes": [
+        {
+          "beat": 0,
+          "len": 1,
+          "pitch": "C4"
+        },
+        {
+          "beat": 1,
+          "len": 1,
+          "pitch": "E4",
+          "vel": 0.7
+        },
+        {
+          "beat": 2,
+          "len": 1,
+          "pitch": "G4",
+          "vel": 0.8
+        },
+        {
+          "beat": 3.5,
+          "len": 1,
+          "pitch": "E4",
+          "vel": 0.6
+        },
+        {
+          "beat": 4,
+          "len": 1,
+          "pitch": "A3",
+          "vel": 0.7
+        },
+        {
+          "beat": 5,
+          "len": 1,
+          "pitch": "C4",
+          "vel": 0.75
+        },
+        {
+          "beat": 6,
+          "len": 1,
+          "pitch": "E4",
+          "vel": 0.85
+        },
+        {
+          "beat": 7.5,
+          "len": 1,
+          "pitch": "D4",
+          "vel": 0.6
+        },
+        {
+          "beat": 8,
+          "len": 1,
+          "pitch": "F3",
+          "vel": 0.7
+        },
+        {
+          "beat": 9,
+          "len": 1,
+          "pitch": "A3",
+          "vel": 0.75
+        },
+        {
+          "beat": 10,
+          "len": 1,
+          "pitch": "C4",
+          "vel": 0.85
+        },
+        {
+          "beat": 11.5,
+          "len": 1,
+          "pitch": "A3",
+          "vel": 0.6
+        },
+        {
+          "beat": 12,
+          "len": 1,
+          "pitch": "B3",
+          "vel": 0.7
+        },
+        {
+          "beat": 13,
+          "len": 1,
+          "pitch": "D4",
+          "vel": 0.75
+        },
+        {
+          "beat": 14,
+          "len": 1,
+          "pitch": "G4",
+          "vel": 0.9
+        },
+        {
+          "beat": 15,
+          "len": 1,
+          "pitch": "F4",
+          "vel": 0.7
+        }
+      ],
+      "volume": 0.7,
+      "sendDelay": 0.3
+    }
+  ]
+}

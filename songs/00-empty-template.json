@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "新建乐谱",
+  "bpm": 120,
+  "timeSignature": [
+    4,
+    4
+  ],
+  "swing": 0,
+  "tracks": []
+}

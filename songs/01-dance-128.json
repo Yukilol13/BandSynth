@@ -1,0 +1,379 @@
+{
+  "version": 1,
+  "name": "示例 · 四踩舞曲",
+  "bpm": 128,
+  "timeSignature": [
+    4,
+    4
+  ],
+  "swing": 0,
+  "loopBars": 4,
+  "tracks": [
+    {
+      "name": "底鼓",
+      "part": 0,
+      "notes": [
+        {
+          "beat": 0,
+          "len": 0.25,
+          "pitch": 36
+        },
+        {
+          "beat": 1,
+          "len": 0.25,
+          "pitch": 36,
+          "vel": 0.85
+        },
+        {
+          "beat": 2,
+          "len": 0.25,
+          "pitch": 36,
+          "vel": 0.85
+        },
+        {
+          "beat": 3,
+          "len": 0.25,
+          "pitch": 36,
+          "vel": 0.85
+        },
+        {
+          "beat": 4,
+          "len": 0.25,
+          "pitch": 36
+        },
+        {
+          "beat": 5,
+          "len": 0.25,
+          "pitch": 36,
+          "vel": 0.85
+        },
+        {
+          "beat": 6,
+          "len": 0.25,
+          "pitch": 36,
+          "vel": 0.85
+        },
+        {
+          "beat": 7,
+          "len": 0.25,
+          "pitch": 36,
+          "vel": 0.85
+        },
+        {
+          "beat": 8,
+          "len": 0.25,
+          "pitch": 36
+        },
+        {
+          "beat": 9,
+          "len": 0.25,
+          "pitch": 36,
+          "vel": 0.85
+        },
+        {
+          "beat": 10,
+          "len": 0.25,
+          "pitch": 36,
+          "vel": 0.85
+        },
+        {
+          "beat": 11,
+          "len": 0.25,
+          "pitch": 36,
+          "vel": 0.85
+        },
+        {
+          "beat": 12,
+          "len": 0.25,
+          "pitch": 36
+        },
+        {
+          "beat": 13,
+          "len": 0.25,
+          "pitch": 36,
+          "vel": 0.85
+        },
+        {
+          "beat": 14,
+          "len": 0.25,
+          "pitch": 36,
+          "vel": 0.85
+        },
+        {
+          "beat": 15,
+          "len": 0.25,
+          "pitch": 36,
+          "vel": 0.85
+        }
+      ]
+    },
+    {
+      "name": "军鼓",
+      "part": 1,
+      "notes": [
+        {
+          "beat": 1,
+          "len": 0.25,
+          "pitch": 38,
+          "vel": 0.9
+        },
+        {
+          "beat": 3,
+          "len": 0.25,
+          "pitch": 38,
+          "vel": 0.95
+        },
+        {
+          "beat": 5,
+          "len": 0.25,
+          "pitch": 38,
+          "vel": 0.9
+        },
+        {
+          "beat": 7,
+          "len": 0.25,
+          "pitch": 38,
+          "vel": 0.95
+        },
+        {
+          "beat": 9,
+          "len": 0.25,
+          "pitch": 38,
+          "vel": 0.9
+        },
+        {
+          "beat": 11,
+          "len": 0.25,
+          "pitch": 38,
+          "vel": 0.95
+        },
+        {
+          "beat": 13,
+          "len": 0.25,
+          "pitch": 38,
+          "vel": 0.9
+        },
+        {
+          "beat": 15,
+          "len": 0.25,
+          "pitch": 38,
+          "vel": 0.95
+        }
+      ]
+    },
+    {
+      "name": "踩镲",
+      "part": 2,
+      "notes": [
+        {
+          "beat": 0.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.5
+        },
+        {
+          "beat": 1.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.38
+        },
+        {
+          "beat": 2.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.38
+        },
+        {
+          "beat": 3.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.38
+        },
+        {
+          "beat": 4.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.5
+        },
+        {
+          "beat": 5.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.38
+        },
+        {
+          "beat": 6.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.38
+        },
+        {
+          "beat": 7.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.38
+        },
+        {
+          "beat": 8.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.5
+        },
+        {
+          "beat": 9.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.38
+        },
+        {
+          "beat": 10.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.38
+        },
+        {
+          "beat": 11.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.38
+        },
+        {
+          "beat": 12.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.5
+        },
+        {
+          "beat": 13.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.38
+        },
+        {
+          "beat": 14.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.38
+        },
+        {
+          "beat": 15.5,
+          "len": 0.125,
+          "pitch": 42,
+          "vel": 0.38
+        }
+      ],
+      "volume": 0.5
+    },
+    {
+      "name": "贝斯",
+      "part": 3,
+      "notes": [
+        {
+          "beat": 0,
+          "len": 1.5,
+          "pitch": "A2",
+          "vel": 0.9
+        },
+        {
+          "beat": 2,
+          "len": 1.5,
+          "pitch": "A2",
+          "vel": 0.75
+        },
+        {
+          "beat": 4,
+          "len": 1.5,
+          "pitch": "F2",
+          "vel": 0.9
+        },
+        {
+          "beat": 6,
+          "len": 1.5,
+          "pitch": "F2",
+          "vel": 0.75
+        },
+        {
+          "beat": 8,
+          "len": 1.5,
+          "pitch": "C3",
+          "vel": 0.9
+        },
+        {
+          "beat": 10,
+          "len": 1.5,
+          "pitch": "C3",
+          "vel": 0.75
+        },
+        {
+          "beat": 12,
+          "len": 1.5,
+          "pitch": "G2",
+          "vel": 0.9
+        },
+        {
+          "beat": 14,
+          "len": 1.5,
+          "pitch": "G2",
+          "vel": 0.75
+        }
+      ],
+      "volume": 0.85
+    },
+    {
+      "name": "和弦垫",
+      "part": 4,
+      "notes": [
+        {
+          "beat": 0,
+          "len": 3.5,
+          "pitch": "A2:A3:C#3:E3",
+          "vel": 0.5
+        },
+        {
+          "beat": 2,
+          "len": 1.5,
+          "pitch": "A2:A3:C#3:E3",
+          "vel": 0.42
+        },
+        {
+          "beat": 4,
+          "len": 3.5,
+          "pitch": "F2:F3:G#2:C3",
+          "vel": 0.5
+        },
+        {
+          "beat": 6,
+          "len": 1.5,
+          "pitch": "F2:F3:G#2:C3",
+          "vel": 0.42
+        },
+        {
+          "beat": 8,
+          "len": 3.5,
+          "pitch": "C3:C4:D#3:G3",
+          "vel": 0.5
+        },
+        {
+          "beat": 10,
+          "len": 1.5,
+          "pitch": "C3:C4:D#3:G3",
+          "vel": 0.42
+        },
+        {
+          "beat": 12,
+          "len": 3.5,
+          "pitch": "G2:G3:B2:D3",
+          "vel": 0.5
+        },
+        {
+          "beat": 14,
+          "len": 1.5,
+          "pitch": "G2:G3:B2:D3",
+          "vel": 0.42
+        }
+      ],
+      "volume": 0.5,
+      "sendReverb": 0.4
+    }
+  ]
+}
