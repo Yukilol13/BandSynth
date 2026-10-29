@@ -1,0 +1,16 @@
+# 统一换行符：仓库内一律存 LF，检出时按平台转换
+# 网页工程用 LF 最稳（Windows 上开 CRLF 会让部分老浏览器解析 <pre>/JS 字符串出问题）
+* text=auto eol=lf
+
+*.js   text eol=lf
+*.json text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.md   text eol=lf
+
+# 二进制资源不做任何换行转换
+*.png binary
+*.jpg binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
