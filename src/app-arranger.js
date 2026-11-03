@@ -432,6 +432,13 @@
       var key = AG.arr.activeTrackIndex + '|' + (at ? at.role : '') + '|' + (at ? at.part : '');
       if (AG._instKey !== key) { AG._instKey = key; syncInstrument(); }
       renderAgStatus();
+      /* ⚠️ 和弦提示必须在这里刷新。
+         琴键上的亮色是按「当前目标小节的和弦」算的，而改和弦（setChord）、
+         切小节（setTargetBar）、铺进行（applyProgression）全都只发 'change'，
+         编辑器自己的 onChange 只在它自己的动作里才会调 → 之前只有
+         「重建演奏条」那一下会刷新，结果就是：谱面遮罩会跟着变，
+         底部琴键的提示几乎永远不亮（或者停在旧的小节上）。 */
+      syncChordHint();
     });
     AG.arr.on('history', function () { syncHistoryButtons(); });
     // 声部/库变化 → 音轨列表里的音色名要跟着更新
