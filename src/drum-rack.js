@@ -227,7 +227,16 @@
     vca.gain.value = 0.0001;
 
     src.connect(filt);
-    filt.connect(vca);
+    /* 轨音量单独挂一个节点：播放中拖轨音量滑杆，正在响的鼓立刻跟着变 */
+    var gainNode = null;
+    if (typeof opts.gain === 'number' && isFinite(opts.gain)) {
+      gainNode = ctx.createGain();
+      gainNode.gain.value = Math.max(0, opts.gain);
+      filt.connect(gainNode);
+      gainNode.connect(vca);
+    } else {
+      filt.connect(vca);
+    }
     /* 每轨声像：只在需要时插一个 panner（pan=0 时省掉一个节点） */
     var pan = U.clamp(opts.pan || 0, -1, 1);
     var panner = null;
@@ -248,9 +257,10 @@
     var aGain = (a.gain === undefined ? 0.9 : a.gain);
     var sGain = (d.sampleGain === undefined ? 1 : d.sampleGain);
     var velToGain = U.clamp(d.velocityToGain === undefined ? 0 : d.velocityToGain, 0, 1);
-    /* 轨增益直接乘进峰值：内置鼓的 velocityToGain 默认为 0，
-       只改 vel 不会改变响度 —— 之前靠改通道总音量来调轨，才导致两轨互相覆盖。 */
-    var trGain = U.clamp(opts.gain === undefined ? 1 : opts.gain, 0, 2);
+    /* 轨增益：建了 gainNode 就由节点承担（还能实时改），否则直接乘进峰值。
+       内置鼓的 velocityToGain 默认为 0，只改 vel 不会改变响度 ——
+       之前靠改通道总音量来调轨，才导致两轨互相覆盖。 */
+    var trGain = gainNode ? 1 : U.clamp(opts.gain === undefined ? 1 : opts.gain, 0, 2);
     var peak = U.clamp(d.volume * aGain * sGain * (1 - velToGain + velToGain * vel) * trGain, 0, 2);
     var atk = Math.max(0.0005, a.attack === undefined ? 0.001 : a.attack);
     var dec = Math.max(0.01, a.decay === undefined ? 0.2 : a.decay);
@@ -278,7 +288,7 @@
     try { src.start(when); } catch (e) { /* noop */ }
 
     var voice = {
-      drumId: drumId, src: src, vca: vca, filt: filt,
+      drumId: drumId, src: src, vca: vca, filt: filt, gainNode: gainNode,
       released: false, startedAt: when, peak: peak
     };
     this.voices.push(voice);

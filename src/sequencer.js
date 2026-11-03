@@ -241,6 +241,7 @@
         pan: tr.pan || 0
       });
       if (!dv) return;
+      this._rememberVoice(ev.trackIndex, dv);
       if (this.onEvent) this.onEvent({ ev: ev, voice: dv, when: when });
       return;
     }
@@ -266,6 +267,7 @@
       gain: tv
     });
     if (!voice) return;
+    this._rememberVoice(ev.trackIndex, voice);
 
     /* 发声长度由声部「播放模式」决定（见声部设置）：
          单次 = 采样自己播完，音符时值不干预（音符比采样长也**不循环**）
@@ -277,6 +279,40 @@
     }
 
     if (this.onEvent) this.onEvent({ ev: ev, voice: voice, when: when });
+  };
+
+  /* ---------------- 轨音量实时调整 ---------------- */
+
+  /** 记住「这条轨上正在响的音」，播放中拖音量滑杆时要能找到它们 */
+  Sequencer.prototype._rememberVoice = function (ti, voice) {
+    if (!voice || ti === undefined || ti === null) return;
+    if (!this._trackVoices) this._trackVoices = {};
+    var list = this._trackVoices[ti] || (this._trackVoices[ti] = []);
+    list.push(voice);
+    /* 只留最近的一批：老 voice 早就放完了，留着只是浪费内存 */
+    if (list.length > 96) list.splice(0, list.length - 96);
+  };
+
+  /**
+   * 实时改某条轨的音量。
+   * 之前轨音量只混进「起音包络」：新弹的音按新音量响，**已经在响的音不变**，
+   * 拖滑杆听着像没反应。这里直接改每个 voice 的增益节点 → 立刻见效。
+   * 试听与离线渲染同样走这条路径（离线渲染时渲染完就结束，不用改）。
+   */
+  Sequencer.prototype.setTrackGain = function (ti, v) {
+    if (!this._trackVoices) return;
+    var list = this._trackVoices[ti];
+    if (!list || !list.length) return;
+    var g = Math.max(0, Math.min(2, typeof v === 'number' && isFinite(v) ? v : 0));
+    var now = this.ctx ? this.ctx.currentTime : 0;
+    for (var i = list.length - 1; i >= 0; i--) {
+      var vo = list[i];
+      if (!vo || vo.released || !vo.gainNode) { list.splice(i, 1); continue; }
+      try {
+        vo.gainNode.gain.cancelScheduledValues(now);
+        vo.gainNode.gain.setTargetAtTime(g, now, 0.02);
+      } catch (e) { /* noop */ }
+    }
   };
 
   Sequencer.prototype.getProgress = function () {

@@ -334,11 +334,21 @@
       shaper.oversample = '2x';
     }
 
-    // source(s) → f1(高切前的低切) → [fHi 高切] → [f2] → [shaper] → vca → this.out
+    // source(s) → f1(高切前的低切) → [fHi 高切] → [f2] → [shaper] → [gainNode] → vca → this.out
     var tail = f1;
     if (fHi) { f1.connect(fHi); tail = fHi; }
     if (f2) { tail.connect(f2); tail = f2; }
     if (shaper) { tail.connect(shaper); tail = shaper; }
+    /* 轨音量（逐音的线性增益）单独挂一个节点：
+       播放中拖动轨音量滑杆时，**正在响的音**要立刻跟着变。
+       混进起音包络做不到这点 —— 包络一旦排程完就定住了。 */
+    var gainNode = null;
+    if (typeof opts.gain === 'number' && isFinite(opts.gain)) {
+      gainNode = ctx.createGain();
+      gainNode.gain.value = Math.max(0, opts.gain);
+      tail.connect(gainNode);
+      tail = gainNode;
+    }
     tail.connect(vca);
     vca.connect(this.out);
 
@@ -369,9 +379,9 @@
 
     var voice = {
       part: this, note: note, vel: vel, when: when,
-      sources: sources, vca: vca,
+      sources: sources, vca: vca, gainNode: gainNode,
       nodes: [vca, f1].concat(fHi ? [fHi] : []).concat(f2 ? [f2] : [])
-        .concat(shaper ? [shaper] : []),
+        .concat(shaper ? [shaper] : []).concat(gainNode ? [gainNode] : []),
       ratio: ratio, released: false, porta: porta, portaFrom: this._portaFrom,
       naturalDur: naturalDur, filterBase: cut,
       filterLowBase: isBand ? cutLo : 0
@@ -386,7 +396,8 @@
       try { sources[k].start(startAt, startOffset); } catch (e) { /* 已启动 */ }
     }
 
-    this._applyAmpEnv(vca, when, vel, naturalDur, voice, opts.gain);
+    /* 轨音量已经由 gainNode 承担，就不要再乘进起音峰值（否则乘两次）。 */
+    this._applyAmpEnv(vca, when, vel, naturalDur, voice, gainNode ? undefined : opts.gain);
     /* 包络作用于每个滤波边的**自身基准频率**：
        bandpass 时低切与高切按同一比例扫动，频带整体上移，听感是「哇」而不是变窄。 */
     this._applyFilterEnv(f1, when, isBand ? voice.filterLowBase : voice.filterBase, voice);

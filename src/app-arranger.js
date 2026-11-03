@@ -387,6 +387,13 @@
       onRequestChord: function (bar, x, y) { openChordPicker(bar, x, y); },
       onRulerContext: function (bar, x, y) { openSectionPicker(bar, x, y); },
       onTrackMix: function (ti) { applyTrackMix(ti); },
+      /* 轨音量实时：除了写进轨道，还要改「正在响的音」的增益节点 */
+      onTrackVolume: function (ti, v) {
+        applyTrackMix(ti);
+        if (App.sequencer && App.sequencer.setTrackGain) App.sequencer.setTrackGain(ti, v);
+      },
+      /* 音量动态曲线栏（单轨编辑时显示） */
+      autoCanvas: document.getElementById('agAutoCanvas'),
       // 轨头「声部」下拉：列出现有声部（鼓组声部不参与，鼓组轨固定走鼓组通道）
       getPartOptions: function () {
         if (!App.engine) return [];

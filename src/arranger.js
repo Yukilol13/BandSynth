@@ -436,6 +436,9 @@
       pan: opts.pan || 0,
       muted: false,
       solo: false,
+      /* 音量动态曲线点：[{ beat, value }]，value 0..1（乘在轨音量上）。
+         没有点 = 不做动态（音量恒定）。 */
+      automation: [],
       // 编曲专有
       role: role,
       toneId: opts.toneId || null,
@@ -529,6 +532,65 @@
     this._undo.length = 0;
     this._redo.length = 0;
     this.emit('history');
+  };
+
+  /* ---------------- 音量动态曲线 ---------------- */
+
+  /**
+   * 某轨在某拍上的动态值（0..1）。
+   * 没有曲线点 → 1（不改变音量）。
+   * 两点之间用 smoothstep 插值：两端平缓、中间快 —— 不会直上直下的折线。
+   */
+  Arranger.prototype.automationAt = function (track, beat) {
+    if (!track) return 1;
+    var pts = track.automation;
+    if (!pts || !pts.length) return 1;
+    if (BS.score && BS.score.automationAt) return BS.score.automationAt(pts, beat);
+    return 1;
+  };
+
+  /** 加一个曲线点（value 0..1）；同一拍上已有点就移动它 */
+  Arranger.prototype.setAutomationPoint = function (trackIndex, beat, value) {
+    var t = this.getTrack(trackIndex);
+    if (!t) return null;
+    var b = this.snapTick(Math.max(0, beat));
+    var v = U.clamp(value === undefined ? 1 : value, 0, 1);
+    if (!t.automation) t.automation = [];
+    var pt = null;
+    for (var i = 0; i < t.automation.length; i++) {
+      if (Math.abs(t.automation[i].beat - b) < 1e-6) { pt = t.automation[i]; break; }
+    }
+    if (!pt) {
+      pt = { beat: b, value: v };
+      t.automation.push(pt);
+    } else {
+      pt.value = v;
+    }
+    t.automation.sort(function (a, b2) { return a.beat - b2.beat; });
+    this.changed('automation');
+    return pt;
+  };
+
+  /** 删掉某个拍上的曲线点；没有点则返回 false */
+  Arranger.prototype.removeAutomationPoint = function (trackIndex, beat) {
+    var t = this.getTrack(trackIndex);
+    if (!t || !t.automation) return false;
+    var before = t.automation.length;
+    t.automation = t.automation.filter(function (p) { return Math.abs(p.beat - beat) >= 1e-6; });
+    if (t.automation.length === before) return false;
+    this.changed('automation');
+    return true;
+  };
+
+  /** 曲线上离某拍最近的点（容差拍） */
+  Arranger.prototype.automationPointNear = function (track, beat, tol) {
+    if (!track || !track.automation || !track.automation.length) return null;
+    var best = null, bd = Infinity;
+    for (var i = 0; i < track.automation.length; i++) {
+      var d = Math.abs(track.automation[i].beat - beat);
+      if (d < bd) { bd = d; best = track.automation[i]; }
+    }
+    return (best && bd <= (tol === undefined ? 0.25 : tol)) ? best : null;
   };
 
   /* ---------------- 音符块操作 ---------------- */
@@ -1367,6 +1429,10 @@
           color: t.color || null,
           volume: t.volume === undefined ? 1 : t.volume,
           pan: t.pan || 0,
+          /* 音量动态曲线点（播放侧也要带着，走同一条增益计算） */
+          automation: (t.automation || []).map(function (p) {
+            return { beat: Math.round(p.beat * 10000) / 10000, value: Math.round(p.value * 1000) / 1000 };
+          }),
           // 独奏解析：有任何轨 solo 时，其余轨一律静音；单轨试听时同理只留一轨
           muted: !!t.muted || (anySolo && !t.solo) || (hasOnly && i !== only),
           solo: !!t.solo,
@@ -1444,6 +1510,7 @@
           name: t.name, part: t.part, role: t.role, toneId: t.toneId,
           color: t.color, volume: t.volume, pan: t.pan,
           muted: t.muted, solo: t.solo, drum: t.drum,
+          automation: (t.automation || []).map(function (p) { return { beat: p.beat, value: p.value }; }),
           notes: t.notes.map(function (n) {
             // 快照要带上音符修饰，否则撤销一次滑音/颤音就没了
             var x = { id: n.id, beat: n.beat, len: n.len, pitch: n.pitch, vel: n.vel };
@@ -1477,6 +1544,7 @@
         name: t.name, part: t.part, role: t.role, toneId: t.toneId,
         color: t.color, volume: t.volume, pan: t.pan,
         muted: t.muted, solo: t.solo, drum: t.drum,
+        automation: (t.automation || []).map(function (p) { return { beat: p.beat, value: p.value }; }),
         notes: t.notes.map(function (n) {
           // 修饰字段按原样恢复（快照里没有就不补 0）
           var x = { id: n.id, beat: n.beat, len: n.len, pitch: n.pitch, vel: n.vel };
@@ -1551,6 +1619,10 @@
           pan: t.pan || 0,
           muted: !!t.muted,
           solo: !!t.solo,
+          /* 音量动态曲线点（没有就写空数组，格式统一） */
+          automation: (t.automation || []).map(function (p) {
+            return { beat: Math.round(p.beat * 10000) / 10000, value: Math.round(p.value * 1000) / 1000 };
+          }),
           notes: t.notes.map(function (n) {
             var x = { beat: Math.round(n.beat * 10000) / 10000, len: Math.round(n.len * 10000) / 10000, pitch: n.pitch };
             if (n.vel !== undefined && n.vel !== 1) x.vel = n.vel;
@@ -1617,7 +1689,14 @@
         solo: !!t.solo,
         role: role,
         toneId: t.toneId || null,
-        color: t.color || TRACK_COLORS[song.tracks.length % TRACK_COLORS.length]
+        color: t.color || TRACK_COLORS[song.tracks.length % TRACK_COLORS.length],
+        /* 音量动态曲线点 */
+        automation: (t.automation || []).map(function (p) {
+          return {
+            beat: Math.max(0, parseFloat(p.beat) || 0),
+            value: U.clamp(parseFloat(p.value), 0, 1)
+          };
+        }).sort(function (a, b) { return a.beat - b.beat; })
       });
     });
     this.song = song;

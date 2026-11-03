@@ -67,6 +67,11 @@
     this.onRequestChord = opts.onRequestChord || null;
     this.onRulerContext = opts.onRulerContext || null;
     this.onTrackMix = opts.onTrackMix || function () {};
+    /* 轨音量实时调整：播放中拖滑杆时，正在响的音要立刻跟着变 */
+    this.onTrackVolume = opts.onTrackVolume || function () {};
+    /* 音量动态曲线栏（单轨编辑时显示在键盘与谱面之间） */
+    this.autoCanvas = opts.autoCanvas || null;
+    this._autoDrag = null;
     // 声部选择：getPartOptions() => [{index,name,drum}]；onPartChange(ti, partIndex)
     this.getPartOptions = opts.getPartOptions || null;
     this.onPartChange = opts.onPartChange || null;
@@ -582,6 +587,173 @@
     this.renderHotRows();     // 缩放/滚动/切轨后高亮行要跟着重新对位
     this.renderTrackCol();
     this.updateVScrollbar();
+    this.renderAuto();        // 音量动态曲线栏（单轨编辑才有）
+  };
+
+  /* ================= 音量动态曲线（单轨编辑） ================= */
+
+  /** 当前编辑轨（单轨模式下） */
+  ArrangerEditor.prototype.autoTrack = function () {
+    if (this.viewMode !== 'track') return null;
+    return this.arr.getTrack(this.editTrackIndex) || null;
+  };
+
+  /** 曲线栏里某个点的 x（与谱面同一条时间轴） */
+  ArrangerEditor.prototype.autoXOf = function (beat) {
+    return this.gutterW + (beat - this.scrollBeat) * this.pxPerBeat;
+  };
+
+  /** 曲线栏里某个值的 y（value 1 在顶，0 在底） */
+  ArrangerEditor.prototype.autoYOf = function (value, h) {
+    var pad = 6;
+    return pad + (1 - U.clamp(value, 0, 1)) * Math.max(1, h - pad * 2);
+  };
+
+  /** 反过来：y → value */
+  ArrangerEditor.prototype.autoValueAt = function (y, h) {
+    var pad = 6;
+    return U.clamp(1 - (y - pad) / Math.max(1, h - pad * 2), 0, 1);
+  };
+
+  /**
+   * 画音量动态曲线。
+   * 曲线用 **smoothstep 逐段采样**画出来 —— 和求值（score.automationAt）
+   * 是同一套插值，所以看到的就是听到的，不会出现「画的是一条直线、
+   * 听的是另一条」。
+   */
+  ArrangerEditor.prototype.renderAuto = function () {
+    var cv = this.autoCanvas;
+    if (!cv) return;
+    var track = this.autoTrack();
+    var wrap = cv.parentNode;
+    if (!track || this.viewMode !== 'track') {
+      /* 不在单轨编辑：清空并隐藏 */
+      var ctx0 = cv.getContext('2d');
+      ctx0.clearRect(0, 0, cv.width, cv.height);
+      if (wrap && wrap.parentNode) wrap.parentNode.classList.add('hide');
+      return;
+    }
+    if (wrap && wrap.parentNode) wrap.parentNode.classList.remove('hide');
+
+    var w = wrap ? wrap.clientWidth : cv.clientWidth;
+    var h = wrap ? wrap.clientHeight : cv.clientHeight;
+    if (!w || !h) return;
+    var dpr = global.devicePixelRatio || 1;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+      cv.width = Math.round(w * dpr);
+      cv.height = Math.round(h * dpr);
+    }
+    cv.style.width = w + 'px';
+    cv.style.height = h + 'px';
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    /* 左侧留出与谱面一样的琴键栏宽度 → 曲线与音块横向对得上 */
+    var gx = this.gutterW;
+    ctx.fillStyle = '#0c1218';
+    ctx.fillRect(0, 0, gx, h);
+    ctx.strokeStyle = 'rgba(255,255,255,.14)';
+    ctx.beginPath(); ctx.moveTo(gx + 0.5, 0); ctx.lineTo(gx + 0.5, h); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.45)';
+    ctx.font = '9px ui-monospace, monospace';
+    ctx.fillText('动态', 6, 14);
+
+    /* 竖向参考线：与谱面同一套步长 */
+    var gLev = this.gridLevels();
+    var bb = this.arr.barBeats();
+    var totalBeats = this.arr.totalBeats();
+    var startBeat = Math.max(0, Math.floor(this.scrollBeat / bb) * bb);
+    ctx.strokeStyle = 'rgba(255,255,255,.05)';
+    for (var t = startBeat; t <= totalBeats + bb; t += gLev.coarse) {
+      var x = Math.round(this.autoXOf(t)) + 0.5;
+      if (x < gx || x > w) continue;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+    /* 100% 基准线 */
+    ctx.strokeStyle = 'rgba(255,255,255,.12)';
+    var y100 = Math.round(this.autoYOf(1, h)) + 0.5;
+    ctx.beginPath(); ctx.moveTo(gx, y100); ctx.lineTo(w, y100); ctx.stroke();
+
+    var pts = track.automation || [];
+    if (!pts.length) {
+      ctx.fillStyle = 'rgba(255,255,255,.28)';
+      ctx.font = '10px ui-monospace, monospace';
+      ctx.fillText('点空白处加一个动态点', gx + 10, h / 2);
+      return;
+    }
+
+    /* 曲线：逐段 smoothstep 采样 */
+    ctx.strokeStyle = '#79e0d0';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    var started = false;
+    for (var i = 0; i < pts.length; i++) {
+      var p = pts[i];
+      var x0 = this.autoXOf(p.beat);
+      if (i === 0) {
+        /* 第一个点之前保持端点值 */
+        var y0 = this.autoYOf(p.value, h);
+        ctx.moveTo(gx, y0);
+        ctx.lineTo(x0, y0);
+        started = true;
+      } else {
+        var prev = pts[i - 1];
+        var steps = 16;
+        for (var s = 1; s <= steps; s++) {
+          var tt = s / steps;
+          var bt = prev.beat + (p.beat - prev.beat) * tt;
+          var vv = prev.value + (p.value - prev.value) * (tt * tt * (3 - 2 * tt));
+          var xx = this.autoXOf(bt);
+          var yy = this.autoYOf(vv, h);
+          if (!started) { ctx.moveTo(xx, yy); started = true; }
+          else ctx.lineTo(xx, yy);
+        }
+      }
+    }
+    /* 最后一个点之后保持端点值 */
+    var lastP = pts[pts.length - 1];
+    var lastX = this.autoXOf(lastP.beat);
+    if (lastX < w) {
+      ctx.lineTo(w, this.autoYOf(lastP.value, h));
+    }
+    ctx.stroke();
+
+    /* 控制点 */
+    for (var j = 0; j < pts.length; j++) {
+      var q = pts[j];
+      var qx = this.autoXOf(q.beat);
+      var qy = this.autoYOf(q.value, h);
+      ctx.fillStyle = '#0a0f14';
+      ctx.strokeStyle = '#9ff0e6';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(qx, qy, 4, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+    }
+  };
+
+  /** 曲线栏坐标 → 拍 */
+  ArrangerEditor.prototype.autoBeatAt = function (x) {
+    return (x - this.gutterW) / this.pxPerBeat + this.scrollBeat;
+  };
+
+  /** 找到离某位置最近的曲线点（像素容差） */
+  ArrangerEditor.prototype.autoPointNear = function (track, x, y) {
+    var pts = (track && track.automation) || [];
+    var best = null, bd = Infinity;
+    for (var i = 0; i < pts.length; i++) {
+      var dx = this.autoXOf(pts[i].beat) - x;
+      var dy = this.autoYOf(pts[i].value, this.autoCanvasHeight()) - y;
+      var d = Math.sqrt(dx * dx + dy * dy);
+      if (d < bd) { bd = d; best = pts[i]; }
+    }
+    return bd <= 10 ? best : null;
+  };
+
+  ArrangerEditor.prototype.autoCanvasHeight = function () {
+    var cv = this.autoCanvas;
+    if (!cv || !cv.parentNode) return 86;
+    return cv.parentNode.clientHeight || 86;
   };
 
   /** 纵向滚动条：位置/显隐跟着布局与滚动走 */
@@ -614,6 +786,28 @@
 
   ArrangerEditor.prototype.isDragging = function () { return !!this.drag; };
 
+  /* ---------- 横向网格（与吸附粒度对齐，按缩放抽稀） ----------
+   * 刻度线落在**吸附粒度的整数倍**上 → 每一个音块、每一个鼓点都能
+   * 对齐到一条线（横向看着不歪）。
+   * 缩得太小就不画那么密：按 2 的幂往上抽稀，只留「看得清」的两级
+   * （细线＝吸附粒度那一档，粗线＝再粗一档），线一多就糊成一片灰。 */
+  ArrangerEditor.prototype.gridLevels = function () {
+    var px = this.pxPerBeat;
+    var g = Math.max(1 / 64, (this.arr && this.arr.grid) || 1 / 16);
+    var bb = (this.arr && this.arr.barBeats && this.arr.barBeats()) || 4;
+    function stepFor(minPx) {
+      var s = g, guard = 0;
+      while (s * px < minPx && s < bb && guard++ < 16) s *= 2;
+      return s;
+    }
+    var fine = stepFor(9);      // 细线：至少 9px 间隔
+    var coarse = stepFor(17);   // 粗线：至少 17px 间隔
+    if (coarse <= fine) coarse = fine * 2;
+    return { fine: fine, coarse: coarse };
+  };
+
+  /** 横向缩放够大时，「拍」（1/4 音符）刻度才画得开：
+   *  每拍不足 ~24px 时虚线会糊成一片，这时退回原来的极淡实线当纹理。 */
   ArrangerEditor.prototype.renderCanvas = function () {
     var cv = this.canvas;
     var w = this.pane.clientWidth, h = this.pane.clientHeight;
@@ -638,10 +832,6 @@
     var gx = this.gutterW;
     var tracks = this.visibleTracks();
     var bandCount = Math.max(1, tracks.length);
-
-    /* 横向缩放够大时，「拍」（1/4 音符）刻度才画得开：
-       每拍不足 ~24px 时虚线会糊成一片，这时退回原来的极淡实线当纹理。 */
-    var showBeatGrid = this.pxPerBeat >= 24;
 
     // --- 循环区间底色 ---
     if (arr.loop) {
@@ -698,24 +888,28 @@
       ctx.strokeStyle = 'rgba(255,255,255,.18)';
       ctx.beginPath(); ctx.moveTo(x, headH); ctx.lineTo(x, bottom); ctx.stroke();
     }
-    /* --- 1/4 音符（每拍）刻度线 ---
-       横向放大后画成虚线：一眼能分清「小节线（实） / 拍线（虚）」，
-       数时值、对齐音符都更有参照。缩得小时拍线会挤在一起，保持淡实线即可。 */
-    if (showBeatGrid) {
-      ctx.save();
-      ctx.setLineDash([3, 4]);
+    /* --- 细分刻度线（与吸附粒度对齐，缩小时自动抽稀） ---
+       细线 = 吸附粒度那一档，粗线 = 再粗一档。
+       两档都是吸附粒度的整数倍 → 音块与鼓点必然落在某条线上。
+       线数随缩放自适应：放大时越来越细，缩小时只留粗线不糊成一片。 */
+    var gLev = this.gridLevels();
+    var gFine = gLev.fine, gCoarse = gLev.coarse;
+    // 细线（实线淡）
+    ctx.strokeStyle = 'rgba(255,255,255,.07)';
+    for (var tf = Math.ceil(startBeat / gFine) * gFine; tf <= totalBeats + bb; tf += gFine) {
+      var tfx = Math.round(this.xOf(tf)) + 0.5;
+      if (tfx < gx || tfx > w) continue;
+      ctx.beginPath(); ctx.moveTo(tfx, headH); ctx.lineTo(tfx, bottom); ctx.stroke();
+    }
+    // 粗线（比细线亮一档）
+    if (gCoarse > gFine) {
       ctx.strokeStyle = 'rgba(255,255,255,.15)';
-    } else {
-      ctx.strokeStyle = 'rgba(255,255,255,.05)';
+      for (var tc = Math.ceil(startBeat / gCoarse) * gCoarse; tc <= totalBeats + bb; tc += gCoarse) {
+        var tcx = Math.round(this.xOf(tc)) + 0.5;
+        if (tcx < gx || tcx > w) continue;
+        ctx.beginPath(); ctx.moveTo(tcx, headH); ctx.lineTo(tcx, bottom); ctx.stroke();
+      }
     }
-    for (var t = startBeat; t <= totalBeats + bb; t += 1) {
-      var txx = Math.round(this.xOf(t)) + 0.5;
-      if (txx < gx || txx > w) continue;
-      // 小节起点跳过：那里已有实线小节线，再叠一条虚线会把小节线切碎
-      if (showBeatGrid && Math.abs(t - Math.round(t / bb) * bb) < 1e-6) continue;
-      ctx.beginPath(); ctx.moveTo(txx, headH); ctx.lineTo(txx, bottom); ctx.stroke();
-    }
-    if (showBeatGrid) ctx.restore();
 
     // --- 表头底色 + 分隔线 ---
     ctx.fillStyle = '#0a0f14';
@@ -741,15 +935,22 @@
       ctx.strokeStyle = 'rgba(255,255,255,.26)';
       ctx.beginPath(); ctx.moveTo(sx, ruler - 5); ctx.lineTo(sx, ruler); ctx.stroke();
     }
-    /* 拍刻度：横向放大后才出现，比小节刻线短一截，与谱面上的虚线拍线配套。
-       小节起点已经有刻线，跳过。 */
-    if (showBeatGrid) {
-      ctx.strokeStyle = 'rgba(255,255,255,.20)';
-      for (var bt = startBeat; bt <= totalBeats + bb; bt += 1) {
-        if (Math.abs(bt - Math.round(bt / bb) * bb) < 1e-6) continue;
-        var btx = Math.round(this.xOf(bt)) + 0.5;
-        if (btx < gx || btx > w) continue;
-        ctx.beginPath(); ctx.moveTo(btx, ruler - 3); ctx.lineTo(btx, ruler); ctx.stroke();
+    /* 细分刻线：与谱面网格同一套步长 → 标尺上的刻线和谱面里的线一一对齐，
+       看标尺就知道音块落在哪一格。小节起点已经有刻线，跳过。 */
+    ctx.strokeStyle = 'rgba(255,255,255,.13)';
+    for (var bt = Math.ceil(startBeat / gFine) * gFine; bt <= totalBeats + bb; bt += gFine) {
+      if (Math.abs(bt - Math.round(bt / bb) * bb) < 1e-6) continue;
+      var btx = Math.round(this.xOf(bt)) + 0.5;
+      if (btx < gx || btx > w) continue;
+      ctx.beginPath(); ctx.moveTo(btx, ruler - 3); ctx.lineTo(btx, ruler); ctx.stroke();
+    }
+    if (gCoarse > gFine) {
+      ctx.strokeStyle = 'rgba(255,255,255,.22)';
+      for (var bc = Math.ceil(startBeat / gCoarse) * gCoarse; bc <= totalBeats + bb; bc += gCoarse) {
+        if (Math.abs(bc - Math.round(bc / bb) * bb) < 1e-6) continue;
+        var bcx = Math.round(this.xOf(bc)) + 0.5;
+        if (bcx < gx || bcx > w) continue;
+        ctx.beginPath(); ctx.moveTo(bcx, ruler - 5); ctx.lineTo(bcx, ruler); ctx.stroke();
       }
     }
 
@@ -853,6 +1054,10 @@
         var rng2 = this.pitchRng(trI);
         var rows2 = Math.max(1, rng2.top - rng2.bottom + 1);
         var kh = bnd.h / rows2;
+        /* 和弦音高在左侧琴键栏上盖一层半透明亮色 —— 单轨编辑时最有用：
+           这一栏就是「音高地图」，亮起来的那几格就是当前小节和弦里的音。 */
+        var pcs2 = this.chordToneSet(arr.targetBar);
+        var chordAlpha = this.viewMode === 'track' ? 0.45 : 0.20;
         for (var pc = rng2.top; pc >= rng2.bottom; pc--) {
           var ky = bnd.top + (rng2.top - pc) * kh;
           if (ky > bnd.top + bnd.h) break;
@@ -860,6 +1065,10 @@
           var isBlack = [1, 3, 6, 8, 10].indexOf(((pc % 12) + 12) % 12) >= 0;
           ctx.fillStyle = isBlack ? '#141b23' : '#cfd8e0';
           ctx.fillRect(isBlack ? 0 : 2, ky, isBlack ? gx * 0.62 : gx - 4, Math.max(1, kh - 0.6));
+          if (pcs2 && pcs2[((pc % 12) + 12) % 12]) {
+            ctx.fillStyle = 'rgba(120,240,225,' + chordAlpha + ')';
+            ctx.fillRect(0, ky, gx, Math.max(1, kh - 0.6));
+          }
           if (pc % 12 === 0 && kh > 7) {
             ctx.fillStyle = '#0a0f14';
             ctx.font = '8px ui-monospace, monospace';
@@ -1057,7 +1266,9 @@
         function mk(part, left, width, pitch) {
           var el = document.createElement('div');
           el.className = 'ag-block' + (sel ? ' sel' : '') +
-            (chordTone ? ' chord-tone' : '') + (part ? ' ag-glide-' + part : '');
+            (chordTone ? ' chord-tone' : '') +
+            (chordTone && self.viewMode === 'track' ? ' in-track' : '') +
+            (part ? ' ag-glide-' + part : '');
           el.dataset.id = n.id;
           el.dataset.ti = ti;
           if (part) el.dataset.part = part;
@@ -1480,6 +1691,8 @@
         e.stopPropagation();
         track.volume = parseFloat(vol.value);
         self.onTrackMix(ti);
+        /* 实时：正在响的音立刻跟着变（不只是下一个音） */
+        self.onTrackVolume(ti, track.volume);
       });
       vol.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
       line2.appendChild(vol);
@@ -1535,6 +1748,64 @@
 
   ArrangerEditor.prototype.bindEvents = function () {
     var self = this;
+
+    /* --- 音量动态曲线：点空白加点 · 拖点改高低 · 右键删点 --- */
+    if (this.autoCanvas) {
+      var cv = this.autoCanvas;
+      cv.addEventListener('pointerdown', function (e) {
+        if (self.viewMode !== 'track') return;
+        var track = self.autoTrack();
+        if (!track) return;
+        if (e.button === 2) return;              // 右键交给 contextmenu
+        e.preventDefault();
+        e.stopPropagation();
+        var r = cv.getBoundingClientRect();
+        var x = e.clientX - r.left, y = e.clientY - r.top;
+        var pt = self.autoPointNear(track, x, y);
+        self.arr.pushUndo('音量动态');
+        if (pt) {
+          self._autoDrag = { pt: pt, track: track };
+        } else {
+          var beat = self.arr.quantize(Math.max(0, self.autoBeatAt(x)));
+          var v = self.autoValueAt(y, self.autoCanvasHeight());
+          var np = self.arr.setAutomationPoint(self.editTrackIndex, beat, v);
+          self._autoDrag = { pt: np, track: track };
+        }
+        self.renderAuto();
+      });
+      cv.addEventListener('pointermove', function (e) {
+        if (!self._autoDrag) return;
+        e.preventDefault();
+        var r = cv.getBoundingClientRect();
+        var x = e.clientX - r.left, y = e.clientY - r.top;
+        var beat = self.arr.quantize(Math.max(0, self.autoBeatAt(x)));
+        var v = self.autoValueAt(y, self.autoCanvasHeight());
+        self._autoDrag.pt.beat = beat;
+        self._autoDrag.pt.value = v;
+        self._autoDrag.track.automation.sort(function (a, b) { return a.beat - b.beat; });
+        self.renderAuto();
+      });
+      global.addEventListener('pointerup', function () {
+        if (!self._autoDrag) return;
+        self._autoDrag = null;
+        self.arr.changed('automation');
+        if (self.onChange) self.onChange('automation');
+      });
+      cv.addEventListener('contextmenu', function (e) {
+        e.preventDefault();
+        if (self.viewMode !== 'track') return;
+        var track = self.autoTrack();
+        if (!track) return;
+        var r = cv.getBoundingClientRect();
+        var x = e.clientX - r.left, y = e.clientY - r.top;
+        var pt = self.autoPointNear(track, x, y);
+        if (!pt) return;
+        self.arr.pushUndo('删除动态点');
+        self.arr.removeAutomationPoint(self.editTrackIndex, pt.beat);
+        self.renderAuto();
+        if (self.onChange) self.onChange('automation');
+      });
+    }
 
     this.overlay.addEventListener('pointerdown', function (e) {
       self.onPointerDown(e);
@@ -2300,7 +2571,8 @@
       if (track.role === 'drum') {
         var rack = this.getDrumRack();
         if (!rack) return;
-        rack.hitPitch(pitch, U.clamp(0.9 * vol, 0.05, 1));
+        /* 力度与音量分开：音量走 gain 节点（能实时调），力度只管音色本身 */
+        rack.hitPitch(pitch, 0.9, undefined, { gain: vol });
         return;
       }
       var ti = this.arr.getTracks().indexOf(track);
@@ -2313,7 +2585,9 @@
         BS.pitchAlgo.prewarm(BS.app.ctx, part.buffer, part.id, [pitch],
           part.rootNote, part.transpose, part.fine, part.stretchQuality);
       }
-      var voice = part.noteOn(pitch, U.clamp(0.85 * vol, 0.05, 1));
+      /* 试听也走 gain 节点：与播放/渲染同一条路径，
+         拖动轨音量滑杆时，正在响的试听音也会立刻变。 */
+      var voice = part.noteOn(pitch, 0.85, undefined, { gain: vol });
       setTimeout(function () {
         try { voice && voice.release && voice.release(); } catch (err) { /* noop */ }
       }, 420);

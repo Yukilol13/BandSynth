@@ -238,6 +238,34 @@
     return bar + '.' + (names[idx] || b.toFixed(2));
   }
 
+  /**
+   * 音量动态曲线求值。
+   * points = [{ beat, value }]（按 beat 升序），返回该拍的动态值（0..1）。
+   *
+   * 两点之间用 **smoothstep** 插值（t²(3−2t)）：起点和终点都是「平的」，
+   * 中间过渡 —— 不会像直线插值那样直上直下，听着像忽然一档一档地跳。
+   * 第一个点之前 / 最后一个点之后保持端点值。
+   */
+  function automationAt(points, beat) {
+    if (!points || !points.length) return 1;
+    if (points.length === 1) return points[0].value;
+    var b = beat;
+    if (b <= points[0].beat) return points[0].value;
+    var last = points[points.length - 1];
+    if (b >= last.beat) return last.value;
+    for (var i = 1; i < points.length; i++) {
+      var p1 = points[i];
+      if (b > p1.beat) continue;
+      var p0 = points[i - 1];
+      var span = p1.beat - p0.beat;
+      if (span <= 1e-9) return p1.value;
+      var t = (b - p0.beat) / span;
+      var s = t * t * (3 - 2 * t);          // smoothstep
+      return p0.value + (p1.value - p0.value) * s;
+    }
+    return last.value;
+  }
+
   /* 把谱面展开为绝对时间事件列表（渲染与播放共用） */
   function buildEvents(song, opts) {
     opts = opts || {};
@@ -265,7 +293,7 @@
              以前把轨音量乘进 vel、播放时再除回去 —— 等于没乘，
              轨音量条怎么拖都不出声（而且两个轨共用一个声部时还会互相顶掉）。 */
           vel: U.clamp(n.vel, 0, 1),
-          trackVol: trVol,
+          trackVol: trVol * automationAt(track.automation, n.beat),
           trackIndex: ti,
           partIndex: isDrum ? -1 : track.part,
           isDrum: isDrum,
@@ -494,6 +522,7 @@
     barsOf: barsOf,
     beatLabel: beatLabel,
     buildEvents: buildEvents,
+    automationAt: automationAt,
     serialize: serialize,
     round: round,
     BUILTIN: BUILTIN,
