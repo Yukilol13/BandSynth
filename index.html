@@ -164,75 +164,83 @@
 
     <!-- 编曲（DAW 式横向钢琴卷帘） -->
     <section class="stage stage-arrange" id="stageArrange">
+﻿      <!-- 编曲页工具栏：按「播放视图 / 曲式 / 单小节填入 / 铺进行」分组，
+           每行一类功能，选项不再挤在一起 -->
       <div class="ag-toolbar">
-        <button id="agPlay" class="btn primary">▶ 试听</button>
-        <button id="agStop" class="btn">■ 停止</button>
-        <button id="agRecord" class="btn rec" title="按电脑键盘演奏，实时录入到当前轨">● 录制</button>
-
+        <div class="kb-group">
+          <label class="mini-label">播放</label>
+          <button id="agPlay" class="btn primary">▶ 试听</button>
+          <button id="agStop" class="btn">■ 停止</button>
+          <button id="agRecord" class="btn rec" title="按电脑键盘演奏，实时录入到当前轨">● 录制</button>
+        </div>
         <div class="kb-group">
           <button id="agUndo" class="btn small" title="撤销 (Ctrl+Z)" disabled>↶ 撤销</button>
           <button id="agRedo" class="btn small" title="重做 (Ctrl+Shift+Z)" disabled>↷ 重做</button>
         </div>
         <div class="kb-group">
+          <label class="mini-label">视图</label>
           <button id="agLoop" class="btn small" title="循环目标小节 4 小节（Shift+拖标尺可改）">循环</button>
           <button id="agZoomOut" class="btn small" title="缩小">−</button>
           <button id="agFit" class="btn small" title="整曲适配窗口">适配</button>
           <button id="agZoomIn" class="btn small" title="放大">+</button>
         </div>
-
         <div class="kb-group">
+          <label class="mini-label">曲式</label>
           <label class="mini-label">调性</label>
           <select id="agKey" class="sel"></select>
           <select id="agScale" class="sel"></select>
-        </div>
-        <div class="kb-group">
           <label class="mini-label">速度</label>
           <input id="agBpm" type="number" class="num" min="20" max="400" step="1" value="120">
           <span class="mini-label">BPM</span>
-        </div>
-        <div class="kb-group">
           <label class="mini-label">拍号</label>
           <select id="agSig" class="sel"></select>
-        </div>
-        <div class="kb-group">
           <label class="mini-label">小节数</label>
           <input id="agBars" type="number" class="num" min="1" max="512" step="1" value="16">
           <button id="agBarsAdd" class="btn small">+4</button>
           <button id="agBarsDel" class="btn small">−4</button>
-        </div>
-        <div class="kb-group">
           <label class="mini-label">吸附</label>
           <select id="agGrid" class="sel"></select>
         </div>
         <div class="kb-group">
+          <label class="mini-label">音轨</label>
           <button id="agAddTrack" class="btn small" title="新建音轨：可选声部音轨或鼓组音轨">＋ 音轨</button>
           <button id="agDelTrack" class="btn small" title="删除当前音轨（Ctrl+Z 可撤销）">− 音轨</button>
         </div>
         <span class="mini-hint" id="agStatus">—</span>
       </div>
 
+      <!-- ② 单小节快速填入：和弦库 + 模板 → 填入当前（目标）小节 -->
       <div class="ag-subbar">
         <div class="kb-group">
-          <label class="mini-label">小节</label>
-          <input id="agBarSel" type="text" class="text-input tiny" placeholder="如 1-4,7" >
-          <button id="agBarDel" class="btn small">删除所选小节</button>
-        </div>
-        <div class="kb-group">
-          <label class="mini-label">和弦库</label>
+          <label class="mini-label">单小节填入</label>
+          <label class="mini-label">和弦</label>
           <select id="agChord" class="sel"></select>
           <label class="mini-label">模板</label>
           <select id="agPattern" class="sel"></select>
-          <button id="agFill" class="btn small">填充第 1 小节 →</button>
+          <button id="agFill" class="btn small" title="按上面的和弦与模板，填入目标小节（点顶部标尺换小节）">填入本小节</button>
           <label class="chk" title="录音前先打一小节预备拍"><input type="checkbox" id="agCountIn" checked> 预备拍</label>
         </div>
         <div class="kb-group">
-          <label class="mini-label">进行</label>
-          <select id="agProg" class="sel"></select>
-          <button id="agProgApply" class="btn small primary" title="从目标小节开始，按当前模板铺整段和弦进行">铺进行</button>
-        </div>
-        <div class="kb-group">
+          <label class="mini-label">小节 / 选择</label>
+          <input id="agBarSel" type="text" class="text-input tiny" placeholder="如 1-4,7" >
+          <button id="agBarDel" class="btn small">删除所选小节</button>
           <button id="agSelectAll" class="btn small">全选本轨</button>
           <button id="agDelSel" class="btn small">删除选中</button>
+        </div>
+      </div>
+
+      <!-- ③ 铺进行：和弦进行 + 铺哪些轨（鼓组 / 其它音轨） -->
+      <div class="ag-subbar">
+        <div class="kb-group">
+          <label class="mini-label">铺进行</label>
+          <select id="agProg" class="sel"></select>
+          <button id="agProgApply" class="btn small primary" title="从目标小节开始，按进行铺和弦，并把鼓组和其它音轨一起铺上">铺进行</button>
+        </div>
+        <div class="kb-group">
+          <label class="mini-label">铺进行选项</label>
+          <label class="chk" title="铺进行时用鼓型把鼓组轨一起铺上"><input type="checkbox" id="agProgDrum" checked> 同时铺鼓组</label>
+          <label class="chk" title="铺进行时用当前模板把其它音轨一起铺上（会覆盖这些轨该段的内容）"><input type="checkbox" id="agProgAll" checked> 同时铺其它音轨</label>
+          <span class="mini-hint">从目标小节铺到曲末</span>
         </div>
       </div>
 
@@ -250,6 +258,14 @@
         <span class="ag-zoomY" title="纵向缩放：音块变高 / 变矮（Ctrl+Shift+滚轮同效，锚在光标下的音）">
           <button id="agEditZoomYOut" class="btn small" title="音块变矮：一屏看到更多音">行高 −</button>
           <button id="agEditZoomYIn" class="btn small" title="音块变高：一屏只看几个音，好点好拖">行高 ＋</button>
+        </span>
+        <span class="ag-seg" id="agStackWrap" title="长按和弦里的音 → 往上自动叠一个和弦，叠几个音由这里决定">
+          <span class="ag-seg-label">叠和弦</span>
+          <select id="agStackCount" class="sel tiny">
+            <option value="3">3 音</option>
+            <option value="4">4 音</option>
+            <option value="5">5 音</option>
+          </select>
         </span>
         <span class="mini-hint" id="agEditHint">点顶部标尺换目标小节 · 右键拖拽平移视图</span>
         <div class="ag-edit-btns">

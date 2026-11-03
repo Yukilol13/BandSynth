@@ -109,6 +109,7 @@
        'select' = 框选：空白处拖动 = 框选音块，选区可整组横/纵移动、可框选后删除
        'add'    = 添加：空白处左键点击 = 直接加音（等价于原来勾上「允许修改」） */
     this.editTool = 'select';
+    this.chordStackCount = 3;    // 长按和弦音时往上叠几个音（3-5，设置在单轨编辑条上）
     this.onEditModeChange = opts.onEditModeChange || function () {};   // 视图模式（总览/单轨）变化
     this.onToolChange = opts.onToolChange || function () {};            // 鼠标模式（框选/添加）变化
     this.onOpenTrack = opts.onOpenTrack || function () {};
@@ -339,7 +340,13 @@
         if (n.pitch > mx) mx = n.pitch;
       }
     });
-    if (mn > mx) { mn = this.pitchBottom; mx = this.pitchTop; }
+    if (mn > mx) {
+      /* 空轨：给一个默认音域（C4 上下两个八度）。
+         以前直接套用整屏 36~84（48 个半音），一屏塞 48 行 → 每行只有 3px，
+         音块互相叠着、点不准；两个八度够用，行高也还看得清。
+         想看更宽的音域：单轨编辑里用「行高 −」缩小即可。 */
+      mn = DEFAULT_RANGE.bottom; mx = DEFAULT_RANGE.top;
+    }
     // 上下各留 2 个半音，避免音块贴边
     return { top: Math.min(127, mx + 2), bottom: Math.max(0, mn - 2) };
   };
@@ -388,6 +395,8 @@
      太小 → 一个音块占满半屏；太大 → 又回到「音块几像素高」的老问题。 */
   var MIN_PITCH_SPAN = 6;   // 最多放大到 6 个半音（7 行）铺满一屏
   var MAX_PITCH_SPAN = 96;  // 最多缩小到 96 个半音（8 个八度）铺满一屏
+  /* 空轨的默认音域（C4 上下两个八度） */
+  var DEFAULT_RANGE = { top: 74, bottom: 50 };
 
   /**
    * 纵向布局（唯一真值）：每个可见轨一条带，鼓组带更高（12 面鼓各一行）。
@@ -885,11 +894,117 @@
     return { x: x, y: r.y, w: w, h: r.h };
   };
 
+  /**
+   * 某小节的和弦音（音高类集合，键是 0-11 的音高类）。
+   * 没有指定和弦时返回 null —— 「没有提示」比「提示一堆不相关的」好。
+   */
+  ArrangerEditor.prototype.chordToneSet = function (bar) {
+    var arr = this.arr;
+    if (!arr) return null;
+    var c = arr.getChord(bar);
+    if (!c) return null;
+    if (!this._chordToneCache) this._chordToneCache = {};
+    var key = bar + '|' + c.root + '|' + c.quality;
+    var hit = this._chordToneCache[key];
+    if (hit) return hit;
+    var set = {};
+    try {
+      arr.chordPitches(c.root, c.quality, 4).forEach(function (p) {
+        set[((Math.round(p) % 12) + 12) % 12] = 1;
+      });
+    } catch (e) { return null; }
+    this._chordToneCache[key] = set;
+    return set;
+  };
+
+  /** 音符所在小节 */
+  ArrangerEditor.prototype.barOfNote = function (beat) {
+    var bb = this.arr && this.arr.barBeats ? this.arr.barBeats() : 4;
+    return Math.floor(Math.max(0, beat) / bb);
+  };
+
+  /**
+   * 长按和弦音 → 往上叠一个和弦。
+   * 规则：
+   * · 只有「当前小节和弦里的音」能长按叠和弦（不是和弦音就提示一下）
+   * · 从按住的音往上叠，音个数由设置决定（3-5 个，chordStackCount）
+   * · 叠出来的音**整体选中** —— 之后拖动就是整组上下移 / 整组拉长缩短
+   */
+  ArrangerEditor.prototype.chordStackFrom = function (track, ti, note) {
+    var arr = this.arr;
+    if (!arr || !track || !note) return false;
+    var bar = this.barOfNote(note.beat);
+    var ch = arr.getChord(bar);
+    if (!ch) {
+      this.toast('第 ' + (bar + 1) + ' 小节还没有和弦 —— 先在上面选一个');
+      return false;
+    }
+    var qset = BS.arrangerLib.CHORD_QUALITIES || {};
+    var q = qset[ch.quality] || qset.maj;
+    /* 按住的音得是和弦音，否则不知道往上叠哪一组 */
+    var pcs = {};
+    arr.chordPitches(ch.root, ch.quality, 4).forEach(function (p) {
+      pcs[((Math.round(p) % 12) + 12) % 12] = 1;
+    });
+    if (!pcs[((note.pitch % 12) + 12) % 12]) {
+      this.toast('长按只能叠和弦里的音 —— ' + arr.chordLabel(bar) + ' 里没有这个音');
+      return false;
+    }
+
+    /* 往上叠：以按住的音为根，按和弦音型一个八度一个八度地往上加 */
+    var ivs = (q.iv || [0, 4, 7]).slice().sort(function (a, b) { return a - b; });
+    var count = U.clamp(this.chordStackCount || 3, 2, 8);
+    var stack = [];
+    for (var k = 0; stack.length < count; k++) {
+      stack.push(ivs[k % ivs.length] + 12 * Math.floor(k / ivs.length));
+    }
+
+    arr.pushUndo('叠和弦');
+    var added = [];
+    for (var i = 1; i < stack.length; i++) {
+      var p = note.pitch + stack[i];
+      if (p > 127) break;
+      var nn = arr.addNote(ti, note.beat, note.len, p, note.vel === undefined ? 0.85 : note.vel);
+      if (nn) added.push(nn.id);
+    }
+    /* 整体选中：按住的音 + 叠出来的音 → 之后拖动/拉伸都是整组的 */
+    arr.clearSelection();
+    arr.selection.add(note.id);
+    added.forEach(function (nid) { arr.selection.add(nid); });
+    arr.emit('selection:change', arr.selection);
+    this.render();
+    this.toast('已叠上 ' + (added.length + 1) + ' 音和弦（' + arr.chordLabel(bar) + '）· 可整组移动/拉伸');
+    return true;
+  };
+
+  /** 启动长按计时器（按住和弦音不动 → 叠和弦） */
+  ArrangerEditor.prototype.startHoldTimer = function (track, ti, note, gripPitch, part) {
+    this.cancelHoldTimer();
+    if (this.isReadOnly()) return;
+    var self = this;
+    this._holdTimer = setTimeout(function () {
+      self._holdTimer = null;
+      // 已经拖动过就不算长按
+      if (self.drag && self.drag.moved) return;
+      self.chordStackFrom(track, ti, note);
+      // 叠完和弦就不再走「拖动这个音块」的逻辑了
+      if (self.drag) self.drag.kind = 'hold';
+    }, 450);
+  };
+
+  ArrangerEditor.prototype.cancelHoldTimer = function () {
+    if (this._holdTimer) {
+      clearTimeout(this._holdTimer);
+      this._holdTimer = null;
+    }
+  };
+
   ArrangerEditor.prototype.renderBlocks = function () {
     var self = this;
     // 只清音块层：交互层要留着挂事件，清空 overlay 会把标尺/滚动条的事件面一起抹掉
     this.blockLayer.innerHTML = '';
     this.selBox = null;
+    this._chordToneCache = {};      // 和弦音集合缓存：和弦变了要重算
     var arr = this.arr;
     var tracks = this.visibleTracks();
     if (!tracks.length) return;
@@ -912,7 +1027,10 @@
          总览时每条音块都要重新扫一遍该轨音域（O(n²)），轨一长就明显卡。 */
       var rngB = self.pitchRng(track);
       var rowsB = Math.max(1, rngB.top - rngB.bottom + 1);
-      var rowHB = Math.max(5, Math.round(bandH / rowsB) - 1);
+      /* 音块高度 = 一行行高 − 1px（留缝）。下限只留 3px：
+         以前下限 5px，缩得很小时音块比行还高 → 上下两行的音块叠在一起，
+         上面那块把下面那行的点击也吃掉了（点哪不加哪）。 */
+      var rowHB = Math.max(3, Math.round(bandH / rowsB) - 1);
 
       /* 标注数据：滑音弧线 / 颤音波浪线，渲染完音块后统一画到 SVG 层 */
       var arcs = [], waves = [];
@@ -926,11 +1044,20 @@
         var w = Math.max(4, n.len * self.pxPerBeat);
         if (x + w < self.gutterW - 20 || x > paneW + 20) return;   // 视野外
 
+        /* 和弦音提示：这个音属于所在小节指定的和弦 → 音块加半透明亮色遮罩。
+           鼓轨不算（鼓型和和弦无关）。 */
+        var chordTone = false;
+        if (track.role !== 'drum') {
+          var cset = self.chordToneSet(self.barOfNote(n.beat));
+          if (cset) chordTone = !!cset[((n.pitch % 12) + 12) % 12];
+        }
+
         /* 建一块（或半块）。part: 'a' 前块 / 'b' 后块 / '' 整块。
            前块不给左右缩放手柄：它的右缘是「滑音分割点」，由专用手柄管。 */
         function mk(part, left, width, pitch) {
           var el = document.createElement('div');
-          el.className = 'ag-block' + (sel ? ' sel' : '') + (part ? ' ag-glide-' + part : '');
+          el.className = 'ag-block' + (sel ? ' sel' : '') +
+            (chordTone ? ' chord-tone' : '') + (part ? ' ag-glide-' + part : '');
           el.dataset.id = n.id;
           el.dataset.ti = ti;
           if (part) el.dataset.part = part;
@@ -1787,7 +1914,7 @@
 
       var origins = {};
       arr.selectedLocations().forEach(function (l) {
-        var o = { beat: l.note.beat, pitch: l.note.pitch };
+        var o = { beat: l.note.beat, pitch: l.note.pitch, len: l.note.len };
         var f = parseFloat(l.note.glideFrom);
         if (isFinite(f)) o.glideFrom = Math.round(U.clamp(f, 0, 127));   // 群移时滑音起点一起动
         origins[l.note.id] = o;
@@ -1811,6 +1938,11 @@
       };
       /* 记下这一轮已经响过的音高：同一个音高在 140ms 内不重复触发（不然会变机关枪） */
       this.markDragAudition(arr.selection.size > 1 ? 'multi' : id, gripPitch);
+
+      /* 长按和弦音 → 自动往上叠和弦。
+         按住不动超过 HOLD_MS 才算长按；一旦动了（要拖动这个音块）就取消。 */
+      this.startHoldTimer(track, ti, note, gripPitch, part);
+
       e.preventDefault();
       return;
     }
@@ -1833,6 +1965,8 @@
     var y = e.clientY - rect.top;
     var dx = x - d.startX, dy = y - d.startY;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) d.moved = true;
+    /* 一旦动了就不是「长按」了 —— 取消叠和弦的计时 */
+    if (d.moved) this.cancelHoldTimer();
 
     if (d.kind === 'ruler') {
       this.setTargetBarFromX(x);
@@ -2018,9 +2152,23 @@
       var tr = arr2.getTrack(d.fromTrack);
       var nt = tr && tr.notes.filter(function (n) { return n.id === d.id; })[0];
       if (!nt) return;
+      /* 选区里有多个音时（长按叠出来的和弦就是这种）：
+         拉右缘 → 整组一起拉长；拉左缘 → 整组一起左移并缩短（右缘不动）。 */
+      var sel = arr2.selectedLocations();
+      var group = sel.length > 1 ? sel : null;
       if (d.side === 'r') {
         var newLen = arr2.quantize(d.origLen + dx / this.pxPerBeat);
-        arr2.updateNote(d.fromTrack, d.id, { len: Math.max(BS.arranger.TICK, newLen) });
+        newLen = Math.max(BS.arranger.TICK, newLen);
+        arr2.updateNote(d.fromTrack, d.id, { len: newLen });
+        if (group) {
+          var grow = newLen - d.origLen;
+          group.forEach(function (l) {
+            if (l.note.id === d.id) return;
+            var o = d.origins[l.note.id];
+            if (!o || o.len === undefined) return;
+            arr2.updateNote(l.ti, l.note.id, { len: Math.max(BS.arranger.TICK, o.len + grow) });
+          });
+        }
       } else {
         var delta = arr2.quantize(dx / this.pxPerBeat);
         var nb = d.origBeat + delta;
@@ -2028,6 +2176,17 @@
         if (nb < 0) { nb = 0; nl = d.origLen + d.origBeat; }
         if (nl < BS.arranger.TICK) { nl = BS.arranger.TICK; nb = d.origBeat + d.origLen - BS.arranger.TICK; }
         arr2.updateNote(d.fromTrack, d.id, { beat: nb, len: nl });
+        if (group) {
+          group.forEach(function (l) {
+            if (l.note.id === d.id) return;
+            var o = d.origins[l.note.id];
+            if (!o || o.len === undefined) return;
+            var b2 = o.beat + delta, l2 = o.len - delta;
+            if (b2 < 0) { b2 = 0; l2 = o.len + o.beat; }
+            if (l2 < BS.arranger.TICK) { l2 = BS.arranger.TICK; b2 = o.beat + o.len - BS.arranger.TICK; }
+            arr2.updateNote(l.ti, l.note.id, { beat: b2, len: l2 });
+          });
+        }
       }
       this.requestRender();
     }
@@ -2036,11 +2195,17 @@
   ArrangerEditor.prototype.onPointerUp = function (e) {
     var d = this.drag;
     this.drag = null;
+    this.cancelHoldTimer();
     this.hideSelBox();
     if (!d) return;
 
     if (this.vbar) this.vbar.classList.remove('drag');
     if (d.kind === 'pan' || d.kind === 'keys' || d.kind === 'hscroll' || d.kind === 'vscroll') {
+      this.render();
+      return;
+    }
+    /* 长按叠完和弦：不做拖动落点那套（音已经加好了，选区也整好了） */
+    if (d.kind === 'hold') {
       this.render();
       return;
     }

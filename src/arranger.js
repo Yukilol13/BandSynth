@@ -48,22 +48,49 @@
 
   /* ================= 和弦库 ================= */
   /* 品质 → 音程（半音） */
+  /* 和弦性质表。
+     cat = 一级分类（弹窗里按它筛选）：
+       triad 三和弦 / seventh 七和弦 / sixth 六·加音 / nine 九和弦 /
+       ext 扩展（属七加花）/ sus 挂留 */
   var CHORD_QUALITIES = {
-    'maj':   { name: '大三', iv: [0, 4, 7], symbol: '' },
-    'min':   { name: '小三', iv: [0, 3, 7], symbol: 'm' },
-    'dim':   { name: '减三', iv: [0, 3, 6], symbol: 'dim' },
-    'aug':   { name: '增三', iv: [0, 4, 8], symbol: 'aug' },
-    'maj7':  { name: '大七', iv: [0, 4, 7, 11], symbol: 'maj7' },
-    'min7':  { name: '小七', iv: [0, 3, 7, 10], symbol: 'm7' },
-    'dom7':  { name: '属七', iv: [0, 4, 7, 10], symbol: '7' },
-    'sus2':  { name: '挂二', iv: [0, 2, 7], symbol: 'sus2' },
-    'sus4':  { name: '挂四', iv: [0, 5, 7], symbol: 'sus4' },
-    'maj9':  { name: '大九', iv: [0, 4, 7, 11, 14], symbol: 'maj9' },
-    'min9':  { name: '小九', iv: [0, 3, 7, 10, 14], symbol: 'm9' },
-    'add9':  { name: '加九', iv: [0, 4, 7, 14], symbol: 'add9' },
-    '6':     { name: '大六', iv: [0, 4, 7, 9], symbol: '6' },
-    'min6':  { name: '小六', iv: [0, 3, 7, 9], symbol: 'm6' }
+    'maj':   { name: '大三', cat: 'triad',   iv: [0, 4, 7], symbol: '' },
+    'min':   { name: '小三', cat: 'triad',   iv: [0, 3, 7], symbol: 'm' },
+    'dim':   { name: '减三', cat: 'triad',   iv: [0, 3, 6], symbol: 'dim' },
+    'aug':   { name: '增三', cat: 'triad',   iv: [0, 4, 8], symbol: 'aug' },
+    'maj7':  { name: '大七', cat: 'seventh', iv: [0, 4, 7, 11], symbol: 'maj7' },
+    'min7':  { name: '小七', cat: 'seventh', iv: [0, 3, 7, 10], symbol: 'm7' },
+    'dom7':  { name: '属七', cat: 'seventh', iv: [0, 4, 7, 10], symbol: '7' },
+    'mMaj7': { name: '小大七', cat: 'seventh', iv: [0, 3, 7, 11], symbol: 'mMaj7' },
+    'm7b5':  { name: '小七降五', cat: 'seventh', iv: [0, 3, 6, 10], symbol: 'm7b5' },
+    'dim7':  { name: '减七', cat: 'seventh', iv: [0, 3, 6, 9], symbol: 'dim7' },
+    '7sus4': { name: '属七挂四', cat: 'seventh', iv: [0, 5, 7, 10], symbol: '7sus4' },
+    'sus2':  { name: '挂二', cat: 'sus',     iv: [0, 2, 7], symbol: 'sus2' },
+    'sus4':  { name: '挂四', cat: 'sus',     iv: [0, 5, 7], symbol: 'sus4' },
+    '6':     { name: '大六', cat: 'sixth',  iv: [0, 4, 7, 9], symbol: '6' },
+    'min6':  { name: '小六', cat: 'sixth',  iv: [0, 3, 7, 9], symbol: 'm6' },
+    'add9':  { name: '加九', cat: 'sixth',  iv: [0, 4, 7, 14], symbol: 'add9' },
+    'add11': { name: '加十一', cat: 'sixth', iv: [0, 4, 7, 14, 17], symbol: 'add11' },
+    'add13': { name: '加十三', cat: 'sixth', iv: [0, 4, 7, 14, 21], symbol: 'add13' },
+    'maj9':  { name: '大九', cat: 'nine',    iv: [0, 4, 7, 11, 14], symbol: 'maj9' },
+    'min9':  { name: '小九', cat: 'nine',    iv: [0, 3, 7, 10, 14], symbol: 'm9' },
+    '9':     { name: '属九', cat: 'nine',    iv: [0, 4, 7, 10, 14], symbol: '9' },
+    '7b9':   { name: '属七降九', cat: 'ext',  iv: [0, 4, 7, 10, 13], symbol: '7b9' },
+    '7#9':   { name: '属七升九', cat: 'ext',  iv: [0, 4, 7, 10, 15], symbol: '7#9' },
+    '7#5':   { name: '属七升五', cat: 'ext',  iv: [0, 4, 8, 10], symbol: '7#5' },
+    '11':    { name: '属十一', cat: 'ext',   iv: [0, 4, 7, 10, 14, 17], symbol: '11' },
+    '13':    { name: '属十三', cat: 'ext',   iv: [0, 4, 7, 10, 14, 21], symbol: '13' }
   };
+
+  /* 和弦分类（弹窗里的一级筛选条） */
+  var CHORD_CATS = [
+    { id: 'all',     name: '全部' },
+    { id: 'triad',   name: '三和弦' },
+    { id: 'seventh', name: '七和弦' },
+    { id: 'sixth',   name: '六·加音' },
+    { id: 'nine',    name: '九和弦' },
+    { id: 'ext',     name: '扩展' },
+    { id: 'sus',     name: '挂留' }
+  ];
 
   /* 各调的音阶（半音偏移） */
   var SCALES = {
@@ -275,6 +302,7 @@
   Arranger.PROGRESSIONS = PROGRESSIONS;
   Arranger.DRUM_PITCH = DRUM_PITCH;
   Arranger.CHORD_QUALITIES = CHORD_QUALITIES;
+  Arranger.CHORD_CATS = CHORD_CATS;
   Arranger.SCALES = SCALES;
   Arranger.TRACK_COLORS = TRACK_COLORS;
   Arranger.GRID_OPTIONS = GRID_OPTIONS;
@@ -1639,6 +1667,7 @@
   BS.arranger = Arranger;
   BS.arrangerLib = {
     CHORD_QUALITIES: CHORD_QUALITIES,
+    CHORD_CATS: CHORD_CATS,
     SCALES: SCALES,
     PATTERNS: PATTERNS,
     BASS_PATTERNS: BASS_PATTERNS,

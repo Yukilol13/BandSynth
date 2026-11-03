@@ -261,7 +261,11 @@
           time: t0 + start,
           duration: dur,
           pitch: n.pitch,
-          vel: U.clamp(n.vel, 0, 1) * trVol,
+          /* 力度只放音符自身的力度；轨音量单独走 trackVol（线性增益）。
+             以前把轨音量乘进 vel、播放时再除回去 —— 等于没乘，
+             轨音量条怎么拖都不出声（而且两个轨共用一个声部时还会互相顶掉）。 */
+          vel: U.clamp(n.vel, 0, 1),
+          trackVol: trVol,
           trackIndex: ti,
           partIndex: isDrum ? -1 : track.part,
           isDrum: isDrum,

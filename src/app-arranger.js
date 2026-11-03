@@ -25,12 +25,12 @@
       'agBpm', 'agSig', 'agBars', 'agBarsAdd', 'agBarsDel', 'agGrid',
       'agAddTrack', 'agDelTrack', 'agStatus', 'agStatus2',
       'agBarSel', 'agBarDel', 'agChord', 'agPattern', 'agFill', 'agCountIn',
-      'agSelectAll', 'agDelSel',
+      'agSelectAll', 'agDelSel', 'agProgDrum', 'agProgAll',
       'agUndo', 'agRedo', 'agLoop',
       'agZoomIn', 'agZoomOut', 'agFit', 'agProg', 'agProgApply',
       'agEditBar', 'agEditTitle', 'agEditSave', 'agEditCancel',
       'agEditToolWrap', 'agEditToolSelect', 'agEditToolAdd', 'agEditHint',
-      'agEditSolo', 'agEditSoloWrap',
+      'agEditSolo', 'agEditSoloWrap', 'agStackCount',
       'agEditZoomYIn', 'agEditZoomYOut',
       'agInstrument', 'agInstTitle', 'agInstHint', 'agInstBody',
       'agInstOctDown', 'agInstOctUp'];
@@ -410,10 +410,11 @@
       // 播放中单击谱面 → 从该拍继续播（播放器式的进度跳转）
       onSeek: function (beat) { return seekToBeat(beat); },
       toast: toast,
-      onChange: function () { renderAgStatus(); }
+      onChange: function () { renderAgStatus(); syncChordHint(); }
     });
     AG.editor.onTonePick = function (ti) { pickToneForTrack(ti); };
     syncEditTool(AG.editor.editTool);   // 分段开关的初始状态（框选）
+    bindChordPopDismiss();              // 点和弦弹窗外面 = 关掉
     bindInstControls();
     // 双击音轨 → 进入单轨编辑
     AG.editor.onOpenTrack = function (ti) { openTrackEdit(ti); };
@@ -650,18 +651,57 @@
 
     /* 一键铺和弦进行 */
     if (els.agProgApply) els.agProgApply.addEventListener('click', function () {
+      var arr = AG.arr;
       var prog = (BS.arrangerLib.PROGRESSIONS || []).filter(function (p) {
         return p.id === els.agProg.value;
       })[0];
       if (!prog) return;
-      AG.arr.pushUndo('铺和弦进行');
-      var ti = AG.arr.activeTrackIndex;
-      var startBar = AG.arr.targetBar;
-      var applied = AG.arr.applyProgression(startBar, prog.degrees, {
+      var ti = arr.activeTrackIndex;
+      var startBar = arr.targetBar;
+      var pat = els.agPattern.value;
+      var wantDrum = els.agProgDrum ? els.agProgDrum.checked : true;
+      var wantAll = els.agProgAll ? els.agProgAll.checked : true;
+
+      arr.pushUndo('铺和弦进行');
+      /* ① 和弦轨 + 当前轨（按当前模板） */
+      var applied = arr.applyProgression(startBar, prog.degrees, {
         trackIndex: ti,
-        patternId: els.agPattern.value,
+        patternId: pat,
         octave: 3
       });
+      var filled = [];
+
+      /* ② 鼓组轨：用鼓型一起铺（鼓型库里的第一个鼓型，或当前选中的鼓型） */
+      if (wantDrum) {
+        arr.getTracks().forEach(function (t, i) {
+          if (i === ti || t.role !== 'drum') return;
+          var list = arr.patternsFor(i) || [];
+          var dpat = (pat && pat.indexOf('d_') === 0) ? pat : ((list[0] || {}).id);
+          if (!dpat) return;
+          for (var j = 0; j < applied; j++) {
+            var b = startBar + j;
+            var c = arr.getChord(b);
+            if (!c) continue;
+            arr.fillBar(i, b, arr.chordPitches(c.root, c.quality, 3), dpat, { vel: 0.8 });
+          }
+          filled.push(t.name);
+        });
+      }
+
+      /* ③ 其它音轨：同一模板一起铺（会覆盖这些轨该段的内容，选项里写清楚了） */
+      if (wantAll) {
+        arr.getTracks().forEach(function (t, i) {
+          if (i === ti || t.role === 'drum') return;
+          for (var j = 0; j < applied; j++) {
+            var b = startBar + j;
+            var c = arr.getChord(b);
+            if (!c) continue;
+            arr.fillBar(i, b, arr.chordPitches(c.root, c.quality, 3), pat, { vel: 0.8 });
+          }
+          filled.push(t.name);
+        });
+      }
+
       /* 光标跟着铺到下一小节：连续铺进行时不用每次手动点标尺。
          已铺到曲末就不再前进（避免下次覆盖最后一小节）。 */
       var nextBar = startBar + applied;
@@ -673,7 +713,8 @@
         }
       }
       toast('已从第 ' + (startBar + 1) + ' 小节铺 ' + applied + ' 小节：' + prog.name +
-        '（光标已在第 ' + (AG.arr.targetBar + 1) + ' 小节 · Ctrl+Z 可撤销）', 3500);
+        (filled.length ? ('（同时铺了 ' + filled.join('、') + '）') : '（只铺当前轨）') +
+        ' · 光标已在第 ' + (AG.arr.targetBar + 1) + ' 小节 · Ctrl+Z 可撤销', 4000);
       renderAgStatus();
     });
 
@@ -687,6 +728,12 @@
       if (!AG.editor) return;
       AG.editor.setEditTool('add');
       toast('添加模式：左键点击空白处直接加音 · 拖动音块移动（落点响该处音高）· Delete 删除选中', 3200);
+    });
+    /* 长按叠和弦：往上叠几个音（3-5） */
+    if (els.agStackCount) els.agStackCount.addEventListener('change', function () {
+      var n = parseInt(els.agStackCount.value, 10) || 3;
+      if (AG.editor) AG.editor.chordStackCount = n;
+      toast('长按和弦里的音 → 往上叠 ' + n + ' 个音（整组选中，可整体移动/拉伸）', 2600);
     });
     /* 纵向（音高方向）缩放：音域宽的轨在单轨编辑里音块只有几像素高，点不中 */
     if (els.agEditZoomYIn) els.agEditZoomYIn.addEventListener('click', function () {
@@ -828,6 +875,20 @@
 
   /* ---------------- 和弦格：点一下改和弦 ---------------- */
 
+  /* 弹窗结构：
+       ① 顶部蓝色按钮 = 1-7 级（罗马数字），点一下换级数
+       ② 中间筛选条   = 按和弦种类一级筛选（三和弦/七和弦/…）
+       ③ 底部黑色按钮 = 当前调性、当前级数下的具体和弦（根音 + 性质）
+     点弹窗以外的地方直接关掉 —— 不用非得点中某个按钮。 */
+  var ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
+  var chordPop = { bar: -1, degree: 0, cat: 'all', host: null, degWrap: null, catWrap: null, chordWrap: null };
+
+  function chordDegrees() {
+    var arr = AG.arr;
+    if (!arr) return [];
+    return arr.chordsInKey(arr.key, arr.scale) || [];
+  }
+
   function openChordPicker(bar, cx, cy) {
     if (!AG.arr) return;
     var arr = AG.arr;
@@ -839,40 +900,36 @@
       document.body.appendChild(host);
     }
     host.innerHTML = '';
+    chordPop.host = host;
+    chordPop.bar = bar;
+    chordPop.cat = 'all';
+
+    /* 默认落在当前和弦所在级数上（没有和弦就落 I 级） */
+    var degrees = chordDegrees();
+    var cur = arr.getChord(bar);
+    var deg = 0;
+    if (cur) {
+      degrees.forEach(function (c, i) { if (c.root === cur.root) deg = i; });
+    }
+    chordPop.degree = Math.min(deg, Math.max(0, degrees.length - 1));
 
     var title = document.createElement('div');
     title.className = 'ag-chordpop-t';
-    title.textContent = '第 ' + (bar + 1) + ' 小节 和弦';
+    title.textContent = '第 ' + (bar + 1) + ' 小节 · 调性 ' + arr.key +
+      ' ' + (BS.arrangerLib.SCALES[arr.scale] ? BS.arrangerLib.SCALES[arr.scale].name : arr.scale);
     host.appendChild(title);
 
-    var wrap = document.createElement('div');
-    wrap.className = 'ag-chordpop-g';
-    arr.chordsInKey(arr.key, arr.scale).forEach(function (c) {
-      var q = BS.arrangerLib.CHORD_QUALITIES[c.quality];
-      var b = document.createElement('button');
-      b.className = 'ag-chordpop-i';
-      b.textContent = c.root + (q ? q.symbol : '');
-      b.addEventListener('click', function () {
-        closeChordPicker();
-        chooseChord(bar, c.root, c.quality);
-      });
-      wrap.appendChild(b);
-    });
-    host.appendChild(wrap);
+    chordPop.degWrap = document.createElement('div');
+    chordPop.degWrap.className = 'ag-chordpop-deg';
+    host.appendChild(chordPop.degWrap);
 
-    var wrap2 = document.createElement('div');
-    wrap2.className = 'ag-chordpop-g';
-    ['maj7', 'min7', 'dom7', 'sus4', 'add9', 'dim'].forEach(function (q) {
-      var b = document.createElement('button');
-      b.className = 'ag-chordpop-i alt';
-      b.textContent = arr.key + (BS.arrangerLib.CHORD_QUALITIES[q] || {}).symbol;
-      b.addEventListener('click', function () {
-        closeChordPicker();
-        chooseChord(bar, arr.key, q);
-      });
-      wrap2.appendChild(b);
-    });
-    host.appendChild(wrap2);
+    chordPop.catWrap = document.createElement('div');
+    chordPop.catWrap.className = 'ag-chordpop-cat';
+    host.appendChild(chordPop.catWrap);
+
+    chordPop.chordWrap = document.createElement('div');
+    chordPop.chordWrap.className = 'ag-chordpop-g';
+    host.appendChild(chordPop.chordWrap);
 
     var clr = document.createElement('button');
     clr.className = 'ag-chordpop-i clear';
@@ -885,15 +942,98 @@
     });
     host.appendChild(clr);
 
+    refreshChordPicker();
+
     host.style.display = 'block';
     var r = host.getBoundingClientRect();
-    host.style.left = Math.min(cx - r.width / 2, innerWidth - r.width - 10) + 'px';
-    host.style.top = Math.min(cy + 8, innerHeight - r.height - 10) + 'px';
+    host.style.left = Math.max(8, Math.min(cx - r.width / 2, innerWidth - r.width - 10)) + 'px';
+    host.style.top = Math.max(8, Math.min(cy + 8, innerHeight - r.height - 10)) + 'px';
+  }
+
+  /** 重画弹窗里的三块（级数 / 筛选 / 和弦列表） */
+  function refreshChordPicker() {
+    var arr = AG.arr;
+    if (!arr || !chordPop.host || chordPop.bar < 0) return;
+    var degrees = chordDegrees();
+    var qTable = BS.arrangerLib.CHORD_QUALITIES || {};
+    var cats = BS.arrangerLib.CHORD_CATS || [];
+
+    /* ① 级数行 */
+    chordPop.degWrap.innerHTML = '';
+    degrees.forEach(function (c, i) {
+      var b = document.createElement('button');
+      b.className = 'ag-chordpop-degi' + (i === chordPop.degree ? ' on' : '');
+      b.innerHTML = '<b>' + (ROMAN[i] || (i + 1)) + '</b><span>' + c.root + '</span>';
+      b.title = (ROMAN[i] || (i + 1)) + ' 级 = ' + c.root +
+        (qTable[c.quality] ? '（自然音级 ' + (qTable[c.quality].name || c.quality) + '）' : '');
+      b.addEventListener('click', function () {
+        chordPop.degree = i;
+        refreshChordPicker();
+      });
+      chordPop.degWrap.appendChild(b);
+    });
+
+    /* ② 分类筛选行 */
+    chordPop.catWrap.innerHTML = '';
+    cats.forEach(function (cat) {
+      var b = document.createElement('button');
+      b.className = 'ag-chordpop-cati' + (cat.id === chordPop.cat ? ' on' : '');
+      b.textContent = cat.name;
+      b.addEventListener('click', function () {
+        chordPop.cat = cat.id;
+        refreshChordPicker();
+      });
+      chordPop.catWrap.appendChild(b);
+    });
+
+    /* ③ 该级数根音下的具体和弦 */
+    var root = (degrees[chordPop.degree] || {}).root || arr.key;
+    var cur = arr.getChord(chordPop.bar);
+    var curLabel = cur ? arr.chordLabel(chordPop.bar) : '';
+    chordPop.chordWrap.innerHTML = '';
+    Object.keys(qTable).forEach(function (qid) {
+      var q = qTable[qid];
+      if (chordPop.cat !== 'all' && q.cat !== chordPop.cat) return;
+      var b = document.createElement('button');
+      var label = root + (q.symbol || '');
+      b.className = 'ag-chordpop-i alt' + (curLabel === label ? ' on' : '');
+      b.textContent = label;
+      b.title = q.name + '（' + q.iv.join(', ') + '）';
+      b.addEventListener('click', function () {
+        /* ⚠️ 先把 bar 存下来：closeChordPicker 会把 chordPop.bar 清成 -1，
+           再用 chordPop.bar 就会写到第 1 小节去（clamp(-1) = 0）。 */
+        var target = chordPop.bar;
+        closeChordPicker();
+        chooseChord(target, root, qid);
+      });
+      chordPop.chordWrap.appendChild(b);
+    });
+    if (!chordPop.chordWrap.childNodes.length) {
+      var none = document.createElement('div');
+      none.className = 'ag-chordpop-none';
+      none.textContent = '这一类里暂时没有可选和弦';
+      chordPop.chordWrap.appendChild(none);
+    }
   }
 
   function closeChordPicker() {
     var host = document.getElementById('agChordPop');
     if (host) host.style.display = 'none';
+    chordPop.bar = -1;
+  }
+
+  /* 点弹窗以外的地方 → 直接关掉（不用非得点中某个按钮） */
+  function bindChordPopDismiss() {
+    if (bindChordPopDismiss.done) return;
+    bindChordPopDismiss.done = true;
+    document.addEventListener('pointerdown', function (e) {
+      var host = document.getElementById('agChordPop');
+      if (!host || host.style.display === 'none') return;
+      if (host.contains(e.target)) return;
+      // 点和弦格本身不算「外部」—— 那是重新打开
+      if (e.target.closest && e.target.closest('.ag-chordcell')) return;
+      closeChordPicker();
+    }, true);
   }
 
   /**
@@ -1045,8 +1185,12 @@
     }
     var p = App.engine.parts[t.part];
     if (!p) return;
-    p.volume = t.volume === undefined ? 0.85 : t.volume;
+    /* 轨音量**不写回声部**：声部可能被多条轨共用，写声部音量会互相顶掉，
+       而且「写回」只是改了个普通属性，out.gain 根本没动 —— 音量条拖了不起作用。
+       现在轨音量走「按轨的线性增益」（播放/渲染时逐音相乘），
+       声部音量仍然是声部自己的音量，两者互不干扰。 */
     p.pan = t.pan || 0;
+    p.applyAudible();
   }
 
   function syncHistoryButtons() {
@@ -2039,6 +2183,38 @@
           (Inst.shift ? '（' + (Inst.shift > 0 ? '+' : '') + Inst.shift + '）' : '');
       }
       els.agInstHint.textContent = '点击琴键或按电脑键盘试听（' + info + '）· 录制时写入当前轨';
+    }
+    syncChordHint();
+  }
+
+  /**
+   * 和弦提示：当前目标小节的和弦 → 演奏条琴键上的亮色遮罩。
+   * 谱面里同一个小节的和弦音也带同样的遮罩（编辑器那边画），
+   * 两边一致：看着谱子上亮的那几个音，在键盘上也是亮的。
+   */
+  function syncChordHint() {
+    var arr = AG.arr;
+    var kb = Inst.kb;
+    if (!arr || !kb || !kb.keyMap) return;
+    var bar = arr.targetBar || 0;
+    var c = arr.getChord(bar);
+    var pcs = null;
+    if (c) {
+      pcs = {};
+      try {
+        arr.chordPitches(c.root, c.quality, 4).forEach(function (p) {
+          pcs[((Math.round(p) % 12) + 12) % 12] = 1;
+        });
+      } catch (e) { pcs = null; }
+    }
+    kb.keyMap.forEach(function (el, note) {
+      if (!el) return;
+      var on = !!(pcs && pcs[((note % 12) + 12) % 12]);
+      el.classList.toggle('chord-tone', on);
+    });
+    if (els.agInstHint && c) {
+      els.agInstHint.textContent = '当前小节和弦 ' + arr.chordLabel(bar) +
+        ' · 琴键上的亮色就是和弦音 · 点击试听';
     }
   }
 

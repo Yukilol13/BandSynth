@@ -935,6 +935,15 @@ input[type=range].slider::-moz-range-thumb {
   border-radius: 0 0 3px 3px;
 }
 .kb-key.white:hover { background: linear-gradient(180deg, #fff, #e8edf2); }
+/* 和弦音提示（编曲页演奏条）：当前小节和弦里的音 → 亮色遮罩 */
+.kb-key.chord-tone.white {
+  background: linear-gradient(180deg, rgba(79,209,197,.55), rgba(79,209,197,.22));
+  box-shadow: inset 0 0 0 1px rgba(79,209,197,.85);
+}
+.kb-key.chord-tone.black {
+  background: linear-gradient(180deg, rgba(79,209,197,.42), rgba(30,120,120,.25));
+  box-shadow: 0 3px 6px rgba(0,0,0,.6), inset 0 0 0 1px rgba(79,209,197,.75);
+}
 .kb-key.white.active {
   background: linear-gradient(180deg, var(--accent), var(--accent-2));
   box-shadow: inset 0 0 14px rgba(0,0,0,.28);
@@ -1462,19 +1471,20 @@ input[type=range].slider::-moz-range-thumb {
 .stage-arrange { padding: 10px 12px; min-height: 0; overflow: hidden; }
 
 .ag-toolbar {
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  padding: 8px 10px; margin-bottom: 7px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 3px 10px; margin-bottom: 4px;
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
 }
 .ag-subbar {
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  padding: 6px 10px; margin-bottom: 7px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 2px 10px; margin-bottom: 4px;
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
 }
 .sel {
   background: #121820; border: 1px solid var(--border-2); color: var(--text);
   border-radius: 4px; padding: 4px 6px; font-size: 12px; font-family: inherit;
 }
+.sel.tiny { padding: 2px 4px; font-size: 11px; }
 .num {
   width: 62px; background: #121820; border: 1px solid var(--border-2); color: var(--text);
   border-radius: 4px; padding: 4px 6px; font-size: 12px; font-family: var(--mono);
@@ -1569,6 +1579,16 @@ input[type=range].slider::-moz-range-thumb {
   z-index: 3;
 }
 .ag-block:active { cursor: grabbing; }
+/* 和弦音提示：属于所在小节和弦的音 → 半透明亮色遮罩 */
+.ag-block.chord-tone::after {
+  content: ''; position: absolute; inset: 0; border-radius: 2px;
+  background: linear-gradient(180deg, rgba(255,255,255,.42), rgba(255,255,255,.16));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.35);
+  pointer-events: none;
+}
+.ag-block.chord-tone.sel::after {
+  background: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.25));
+}
 .ag-h {
   position: absolute; top: 0; bottom: 0; width: 5px;
   background: rgba(255,255,255,.85); cursor: ew-resize; display: none;
@@ -1842,6 +1862,35 @@ input[type=range].slider::-moz-range-thumb {
 .ag-chordpop-i.alt { background: rgba(255,255,255,.05); color: var(--text); border-color: rgba(255,255,255,.12); }
 .ag-chordpop-i.clear { width: 100%; background: rgba(245,101,101,.12); color: #f6a5a5; border-color: rgba(245,101,101,.3); }
 .ag-chordpop-i.on { background: rgba(79,209,197,.3); color: #e6fffb; border-color: var(--accent); }
+/* 和弦弹窗：顶部级数（蓝）+ 分类筛选 + 底部具体和弦（黑） */
+.ag-chordpop { max-width: 380px; }
+.ag-chordpop-deg { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.ag-chordpop-degi {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 42px; padding: 4px 7px; cursor: pointer; font: inherit;
+  background: rgba(79,209,197,.16); color: #b8f5ee;
+  border: 1px solid rgba(79,209,197,.4); border-radius: 6px;
+}
+.ag-chordpop-degi b { font-size: 13px; line-height: 1.1; }
+.ag-chordpop-degi span { font-size: 10px; opacity: .8; }
+.ag-chordpop-degi:hover { background: rgba(79,209,197,.3); }
+.ag-chordpop-degi.on {
+  background: var(--accent); color: #08131a; border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(79,209,197,.5);
+}
+.ag-chordpop-cat { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.ag-chordpop-cati {
+  font: inherit; font-size: 11px; padding: 3px 8px; cursor: pointer;
+  background: rgba(255,255,255,.04); color: var(--text-dim);
+  border: 1px solid rgba(255,255,255,.12); border-radius: 999px;
+}
+.ag-chordpop-cati:hover { color: #b8f5ee; border-color: rgba(79,209,197,.4); }
+.ag-chordpop-cati.on {
+  background: rgba(79,209,197,.22); color: #e6fffb; border-color: var(--accent);
+}
+.ag-chordpop-i.alt { background: rgba(0,0,0,.55); color: #e8eef4; border-color: rgba(255,255,255,.18); }
+.ag-chordpop-i.alt:hover { background: rgba(79,209,197,.18); }
+.ag-chordpop-none { font-size: 11px; color: var(--text-mute); padding: 4px 2px; }
 /* 段落标记浮层：自定义名称输入框 */
 .ag-secpop-in {
   display: block; width: 100%; margin: 0 0 6px; padding: 5px 8px;
@@ -1876,6 +1925,8 @@ input[type=range].slider::-moz-range-thumb {
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
+/* 编曲页的演奏条只是「顺手弹一下」，键盘压扁些，把高度让给谱面 */
+.ag-inst .kb-wrap { min-height: 92px; }
 .ag-inst-head {
   display: flex; align-items: center; gap: 8px;
   padding: 0 2px 6px;

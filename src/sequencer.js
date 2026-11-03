@@ -231,11 +231,11 @@
       if (!rack) return;
       /* 每条鼓轨的增益/声像按**轨**传入，而不是去改共享鼓组通道的总音量 ——
          否则两条鼓轨会互相覆盖（后一轨把前一轨的音量顶掉）。
-         注意 buildEvents 已把轨音量乘进 vel，这里要还原出音符自身力度，
-         否则「音量」会被算两次。 */
+         音符力度是音符自己的（buildEvents 不再把轨音量折进 vel），
+         轨音量走 hitPitch 的 gain。 */
       var tr = ev.track || {};
       var trVol = tr.volume === undefined ? 1 : tr.volume;
-      var noteVel = trVol > 1e-4 ? U.clamp(ev.vel / trVol, 0, 1) : ev.vel;
+      var noteVel = ev.vel;
       var dv = rack.hitPitch(ev.pitch, noteVel, when, {
         gain: trVol,
         pan: tr.pan || 0
@@ -254,13 +254,16 @@
     var part = this.engine.parts[partIdx];
     if (!part || !part.buffer) return;      // 空声部（没有采样）直接跳过，不出声
 
-    /* buildEvents 把轨音量折进了 vel；这里还原出音符自身力度，
-       让轨音量由 part.volume（混音条）单独负责 —— 否则会被算两次。 */
-    var tv = ev.track && ev.track.volume !== undefined ? ev.track.volume : 1;
-    var vel = tv > 1e-4 ? U.clamp(ev.vel / tv, 0, 1) : ev.vel;
+    /* 轨音量：走**按轨的线性增益**（noteOn 的 gain），不改声部音量。
+       声部音量是「这个乐器」的音量，轨音量是「这条轨在编曲里」的音量，
+       两者分开才不会两条共用声部的轨互相顶掉。 */
+    var tv = ev.trackVol !== undefined ? ev.trackVol
+      : (ev.track && ev.track.volume !== undefined ? ev.track.volume : 1);
+    var vel = ev.vel;
     if (ev.track && ev.track.pan !== undefined) part.pan = ev.track.pan;
     var voice = part.noteOn(ev.pitch, vel, when, {
-      glide: ev.glide, glideFrom: ev.glideFrom, vib: ev.vib, vibRate: ev.vibRate
+      glide: ev.glide, glideFrom: ev.glideFrom, vib: ev.vib, vibRate: ev.vibRate,
+      gain: tv
     });
     if (!voice) return;
 
@@ -359,6 +362,7 @@
       var octx = new OAC(2, frames, sampleRate);
 
       var engine = new BS.Engine(octx);
+      engine.offline = true;          // 离线渲染：关掉发声节点回收（否则只剩最后一段有声音）
       engine.setTempo(song.bpm);
 
       // 建立离线声部：partMap[谱面 part 序号] = 离线声部
@@ -427,13 +431,15 @@
         }
         var p = partMap[ev.partIndex];
         if (!p) return;
-        var tvol = ev.track && ev.track.volume !== undefined ? ev.track.volume : 1;
-        var nvel = tvol > 1e-4 ? U.clamp(ev.vel / tvol, 0, 1) : ev.vel;
-        // 离线声部按轨音量/声像走，与实时播放保持一致的混音结果
-        p.volume = tvol;
+        /* 轨音量 = 按轨的线性增益（不动声部音量：声部是共享的，
+           两条轨共用一个声部时，写声部音量会互相顶掉）。 */
+        var tvol = ev.trackVol !== undefined ? ev.trackVol
+          : (ev.track && ev.track.volume !== undefined ? ev.track.volume : 1);
+        var nvel = ev.vel;
         if (ev.track && ev.track.pan !== undefined) p.pan = ev.track.pan;
         var v = p.noteOn(ev.pitch, nvel, when, {
-          glide: ev.glide, glideFrom: ev.glideFrom, vib: ev.vib, vibRate: ev.vibRate
+          glide: ev.glide, glideFrom: ev.glideFrom, vib: ev.vib, vibRate: ev.vibRate,
+          gain: tvol
         });
         /* 与实时播放同一规则：由声部播放模式决定（单次播完 / 门控按时值 / 循环到音符末） */
         if (v && p.mode !== 'oneshot' && !ev.tie) {

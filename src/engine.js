@@ -118,6 +118,12 @@
 
     this.voices = [];
     this._portaFrom = null;
+    /* 离线渲染（OfflineAudioContext）标记。
+       ⚠️ 离线渲染时所有事件是**一次性提前排程**的，而发声节点的回收靠 setTimeout
+       （_cleanupVoice 里 disconnect）。渲染还在跑，定时器就把已排程的节点断了 ——
+       于是「还没渲染到」的音全部失声，导出只剩最后一段有声音。
+       离线渲染不需要回收（整个 context 用完就丢），所以这里统一跳过。 */
+    this.offline = !!engine.offline;
     this._buildRouting();
   }
 
@@ -221,7 +227,12 @@
     if (!range) return null;
 
     // 复音上限 → 抢占最老的音
-    if (this.voices.length >= this.maxVoices) this._killVoice(this.voices[0], when);
+    /* 离线渲染不做抢占：那里的事件是**一次性全部排程**的，voices 数组只增不减，
+       抢的永远是「整首歌最早的那个音」，而且复音上限在这里没有意义
+       （真实复音是同一时刻的发声数，不是整首歌的音数）。 */
+    if (!this.offline && this.voices.length >= this.maxVoices) {
+      this._killVoice(this.voices[0], when);
+    }
 
     var ratio = this.effectiveRatio(note);
 
@@ -375,7 +386,7 @@
       try { sources[k].start(startAt, startOffset); } catch (e) { /* 已启动 */ }
     }
 
-    this._applyAmpEnv(vca, when, vel, naturalDur, voice);
+    this._applyAmpEnv(vca, when, vel, naturalDur, voice, opts.gain);
     /* 包络作用于每个滤波边的**自身基准频率**：
        bandpass 时低切与高切按同一比例扫动，频带整体上移，听感是「哇」而不是变窄。 */
     this._applyFilterEnv(f1, when, isBand ? voice.filterLowBase : voice.filterBase, voice);
@@ -441,9 +452,12 @@
         try { sources[j].stop(stopAt + 0.02); } catch (e) { /* noop */ }
       }
       this._stopLfo(voice, stopAt + 0.02);
-      var self2 = this;
-      setTimeout(function () { self2._cleanupVoice(voice); },
-        Math.max(0, (stopAt - ctx.currentTime + this.amp.release)) * 1000 + 60);
+      /* 离线渲染不排回收定时器：渲染还没走到这里，定时器就会把节点断了 */
+      if (!this.offline) {
+        var self2 = this;
+        setTimeout(function () { self2._cleanupVoice(voice); },
+          Math.max(0, (stopAt - ctx.currentTime + this.amp.release)) * 1000 + 60);
+      }
     }
 
     this.voices.push(voice);
@@ -452,10 +466,14 @@
     return voice;
   };
 
-  Part.prototype._applyAmpEnv = function (vca, when, vel, naturalDur, voice) {
+  Part.prototype._applyAmpEnv = function (vca, when, vel, naturalDur, voice, extraGain) {
     var a = this.amp, ctx = this.ctx;
-    // 峰值 = 包络增益 × 采样音量 × 力度映射
+    /* 峰值 = 包络增益 × 采样音量 × 力度映射 × **按轨增益**
+       extraGain 是「这条轨的音量」（编曲里每轨独立的混音条），
+       乘在这里而不是去改声部音量 —— 声部可能被多条轨共用，
+       改声部音量会让它们互相顶掉（音量条拖了没反应就是这么来的）。 */
     var peak = a.gain * this.sampleGain * (1 - this.velocityToGain + this.velocityToGain * vel);
+    if (extraGain !== undefined && isFinite(extraGain)) peak *= Math.max(0, extraGain);
     peak = clampNum(peak, 0, 4, 0.9);
     var g = vca.gain;
     var atk = Math.max(0.001, a.attack);
@@ -582,6 +600,12 @@
     this.engine.activeVoices = Math.max(0, this.engine.activeVoices - 1);
     BS.emit('voice:stop', { part: this, note: voice.note, voice: voice });
 
+    /* 离线渲染：**不能**断节点。
+       渲染还没走到这个音的位置，定时器就把 vca/滤波器 disconnect 了 →
+       这个音永远不发声（导出结果只剩最后一段有声音）。
+       离线渲染的 context 用完即弃，不存在泄漏问题。 */
+    if (this.offline) return;
+
     var delay = immediate ? 40 : 60;
     setTimeout(function () {
       for (var i = 0; i < voice.nodes.length; i++) {
@@ -634,6 +658,11 @@
     this.bpm = 120;
     this.timeSignature = [4, 4];
     this.swing = 0;
+    /* 离线渲染标记（OfflineAudioContext）。
+       离线渲染时事件是**一次性全部排程**的，发声节点的回收必须关掉 ——
+       否则回收定时器会在渲染还没走到那个音时就把节点断了，导出只剩最后一段有声音。 */
+    this.offline = !!(ctx && (ctx.offline === true ||
+      (ctx.offline === undefined && typeof ctx.startRendering === 'function')));
 
     this.partBus = ctx.createGain();
     this.masterDrive = ctx.createWaveShaper();
