@@ -1079,7 +1079,7 @@ band-synth/
 node test-core.js         # 255 项：纯逻辑（音高/解析/时序/WAV/WSOLA 音准/裁剪…）
 node test-tone.js         #  64 项：内置音色信号完整性
 node test-import.js       #  25 项：导入成谱（合成鼓点 → 分析 → 出谱 → 写回编曲）
-node test-arrange-edit.js #  54 项：编曲页编辑能力（框选/叠和弦/和弦选择器/铺进行/轨音量…）
+node test-arrange-edit.js #  70 项：编曲页编辑能力（框选/叠和弦/和弦选择器/铺进行/轨音量/和弦提示…）
 node test-browser.js      # 浏览器端：UI 交互 + 真实音频行为（不打印项数，失败即非零退出）
 ```
 
